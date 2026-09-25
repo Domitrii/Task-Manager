@@ -88,37 +88,6 @@ export function Select({
   )
 }
 
-/**
- * Numeric temperature entry. Uses `inputMode="decimal"` so phones and tablets
- * on the pass open a number pad — staff enter these dozens of times a day.
- */
-export function TemperatureInput({
-  className,
-  suffix = '°C',
-  invalid,
-  ...props
-}: InputHTMLAttributes<HTMLInputElement> & { suffix?: string; invalid?: boolean }) {
-  return (
-    <div className="relative">
-      <input
-        type="number"
-        inputMode="decimal"
-        step="0.1"
-        className={cn(
-          CONTROL,
-          'tabular h-12 pr-12 text-lg font-semibold',
-          invalid && 'border-fail-500 focus:border-fail-500 focus:ring-fail-500/15',
-          className,
-        )}
-        {...props}
-      />
-      <span className="text-ink-muted pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-sm font-medium">
-        {suffix}
-      </span>
-    </div>
-  )
-}
-
 export function Checkbox({
   label,
   description,

@@ -198,7 +198,7 @@ function FoodSafetyTabs({
   )
 }
 
-function RaiseIssueModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function RaiseIssueModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { data, activeStaffId, addIssue } = useStore()
   const toast = useToast()
   const [title, setTitle] = useState('')
@@ -218,7 +218,7 @@ function RaiseIssueModal({ open, onClose }: { open: boolean; onClose: () => void
       raisedBy: activeStaffId,
       assigneeId: assigneeId || undefined,
     })
-    toast.success('Issue raised', 'It now appears on the dashboard until it is resolved.')
+    toast.success('Issue raised', 'It stays on the Issues page until it is resolved.')
     setTitle('')
     setDescription('')
     setSeverity('medium')

@@ -48,7 +48,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext value={api}>
       {children}
-      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[60] flex flex-col items-center gap-2 p-4 sm:inset-x-auto sm:right-0 sm:bottom-0 sm:items-end">
+      {/* Top on phones and tablets, where the tab bar and bottom sheets own the
+          bottom edge; a toast there would sit over "Save and next". */}
+      <div className="pointer-events-none fixed inset-x-0 top-[env(safe-area-inset-top)] z-[60] flex flex-col items-center gap-2 p-3 lg:inset-x-auto lg:top-auto lg:right-0 lg:bottom-0 lg:items-end lg:p-4">
         {entries.map((entry) => {
           const { icon: Icon, className } = TONES[entry.tone]
           return (

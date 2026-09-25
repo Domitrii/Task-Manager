@@ -9,6 +9,7 @@
 import { addDays, addMinutes, subDays, subHours } from 'date-fns'
 import { periodInterval, deriveDeliveryStatus, evaluateTemperature, toISODate } from '@/lib/compliance'
 import { createId } from '@/lib/utils'
+import { DELIVERY_LIMITS, SAFE_RANGES } from './temperatureRanges'
 import type {
   AppData,
   ChecklistRun,
@@ -61,8 +62,8 @@ export const DEFAULT_SETTINGS: VenueSettings = {
     { period: 'evening', label: 'Evening', startTime: '16:00', endTime: '20:00' },
     { period: 'closing', label: 'Closing', startTime: '21:00', endTime: '23:30' },
   ],
-  chilledDeliveryMaxTemp: 8,
-  frozenDeliveryMaxTemp: -15,
+  chilledDeliveryMaxTemp: DELIVERY_LIMITS.chilled,
+  frozenDeliveryMaxTemp: DELIVERY_LIMITS.frozen,
 }
 
 const staff: StaffMember[] = [
@@ -80,34 +81,34 @@ const kitchenStaff = staff.filter((person) => person.active && person.role !== '
 
 const items: MonitoredItem[] = [
   // Fridges
-  { id: 'eq_wif1', name: 'Walk-in Fridge 1', category: 'fridge', location: 'Main Kitchen', minTemp: 0, maxTemp: 5, requiredChecks: ['opening', 'midday', 'closing'], active: true, reference: 'Foster HR400' },
-  { id: 'eq_wif2', name: 'Walk-in Fridge 2', category: 'fridge', location: 'Back Store', minTemp: 0, maxTemp: 5, requiredChecks: ['opening', 'closing'], active: true, reference: 'Foster HR400' },
-  { id: 'eq_larder', name: 'Larder Prep Fridge', category: 'fridge', location: 'Larder Section', minTemp: 0, maxTemp: 5, requiredChecks: ['opening', 'evening'], active: true },
+  { id: 'eq_wif1', name: 'Walk-in Fridge 1', category: 'fridge', location: 'Main Kitchen', ...SAFE_RANGES.fridge, requiredChecks: ['opening', 'midday', 'closing'], active: true, reference: 'Foster HR400' },
+  { id: 'eq_wif2', name: 'Walk-in Fridge 2', category: 'fridge', location: 'Back Store', ...SAFE_RANGES.fridge, requiredChecks: ['opening', 'closing'], active: true, reference: 'Foster HR400' },
+  { id: 'eq_larder', name: 'Larder Prep Fridge', category: 'fridge', location: 'Larder Section', ...SAFE_RANGES.fridge, requiredChecks: ['opening', 'evening'], active: true },
   { id: 'eq_dairy', name: 'Dairy Fridge', category: 'fridge', location: 'Main Kitchen', minTemp: 0, maxTemp: 4, requiredChecks: ['opening', 'closing'], active: true },
   { id: 'eq_fish', name: 'Fish Fridge', category: 'fridge', location: 'Main Kitchen', minTemp: 0, maxTemp: 2, requiredChecks: ['opening', 'midday', 'closing'], active: true, notes: 'Tighter range — raw fish held on ice.' },
   { id: 'eq_bar', name: 'Bar Under-counter', category: 'fridge', location: 'Bar', minTemp: 1, maxTemp: 6, requiredChecks: ['opening', 'closing'], active: true },
   // Freezers
-  { id: 'eq_wfz', name: 'Walk-in Freezer', category: 'freezer', location: 'Back Store', minTemp: -24, maxTemp: -18, requiredChecks: ['opening', 'closing'], active: true, reference: 'Gram F1400' },
-  { id: 'eq_ufz', name: 'Under-counter Freezer', category: 'freezer', location: 'Main Kitchen', minTemp: -24, maxTemp: -18, requiredChecks: ['opening', 'closing'], active: true },
+  { id: 'eq_wfz', name: 'Walk-in Freezer', category: 'freezer', location: 'Back Store', ...SAFE_RANGES.freezer, requiredChecks: ['opening', 'closing'], active: true, reference: 'Gram F1400' },
+  { id: 'eq_ufz', name: 'Under-counter Freezer', category: 'freezer', location: 'Main Kitchen', ...SAFE_RANGES.freezer, requiredChecks: ['opening', 'closing'], active: true },
   { id: 'eq_icefz', name: 'Ice Cream Freezer', category: 'freezer', location: 'Pastry Section', minTemp: -25, maxTemp: -18, requiredChecks: ['opening'], active: true },
   // Display fridges
-  { id: 'eq_dess', name: 'Dessert Display', category: 'display_fridge', location: 'Pass', minTemp: 0, maxTemp: 8, requiredChecks: ['opening', 'midday', 'evening'], active: true },
-  { id: 'eq_grab', name: 'Grab & Go Display', category: 'display_fridge', location: 'Front of House', minTemp: 0, maxTemp: 8, requiredChecks: ['opening', 'midday', 'closing'], active: true },
+  { id: 'eq_dess', name: 'Dessert Display', category: 'display_fridge', location: 'Pass', ...SAFE_RANGES.display_fridge, requiredChecks: ['opening', 'midday', 'evening'], active: true },
+  { id: 'eq_grab', name: 'Grab & Go Display', category: 'display_fridge', location: 'Front of House', ...SAFE_RANGES.display_fridge, requiredChecks: ['opening', 'midday', 'closing'], active: true },
   // Hot holding
-  { id: 'eq_bain1', name: 'Bain Marie — Mains', category: 'hot_holding', location: 'Pass', minTemp: 63, maxTemp: null, requiredChecks: ['midday', 'evening'], active: true },
-  { id: 'eq_bain2', name: 'Bain Marie — Sides', category: 'hot_holding', location: 'Pass', minTemp: 63, maxTemp: null, requiredChecks: ['midday', 'evening'], active: true },
-  { id: 'eq_soup', name: 'Soup Kettle', category: 'hot_holding', location: 'Servery', minTemp: 63, maxTemp: null, requiredChecks: ['midday'], active: true },
-  { id: 'eq_carvery', name: 'Carvery Hot Cabinet', category: 'hot_holding', location: 'Servery', minTemp: 63, maxTemp: null, requiredChecks: ['midday', 'evening'], active: true },
+  { id: 'eq_bain1', name: 'Bain Marie — Mains', category: 'hot_holding', location: 'Pass', ...SAFE_RANGES.hot_holding, requiredChecks: ['midday', 'evening'], active: true },
+  { id: 'eq_bain2', name: 'Bain Marie — Sides', category: 'hot_holding', location: 'Pass', ...SAFE_RANGES.hot_holding, requiredChecks: ['midday', 'evening'], active: true },
+  { id: 'eq_soup', name: 'Soup Kettle', category: 'hot_holding', location: 'Servery', ...SAFE_RANGES.hot_holding, requiredChecks: ['midday'], active: true },
+  { id: 'eq_carvery', name: 'Carvery Hot Cabinet', category: 'hot_holding', location: 'Servery', ...SAFE_RANGES.hot_holding, requiredChecks: ['midday', 'evening'], active: true },
   // Cooking probes — ad hoc, per batch
-  { id: 'ck_chicken', name: 'Roast Chicken', category: 'cooking', location: 'Main Kitchen', minTemp: 75, maxTemp: null, requiredChecks: [], active: true },
-  { id: 'ck_burger', name: 'Beef Burger', category: 'cooking', location: 'Grill', minTemp: 75, maxTemp: null, requiredChecks: [], active: true },
-  { id: 'ck_pork', name: 'Pork Belly', category: 'cooking', location: 'Main Kitchen', minTemp: 75, maxTemp: null, requiredChecks: [], active: true },
-  { id: 'ck_pie', name: 'Steak & Ale Pie', category: 'cooking', location: 'Main Kitchen', minTemp: 75, maxTemp: null, requiredChecks: [], active: true },
-  { id: 'ck_reheat', name: 'Reheated Sauces', category: 'cooking', location: 'Main Kitchen', minTemp: 75, maxTemp: null, requiredChecks: [], active: true },
-  { id: 'ck_fish', name: 'Pan-fried Sea Bass', category: 'cooking', location: 'Grill', minTemp: 75, maxTemp: null, requiredChecks: [], active: true },
+  { id: 'ck_chicken', name: 'Roast Chicken', category: 'cooking', location: 'Main Kitchen', ...SAFE_RANGES.cooking, requiredChecks: [], active: true },
+  { id: 'ck_burger', name: 'Beef Burger', category: 'cooking', location: 'Grill', ...SAFE_RANGES.cooking, requiredChecks: [], active: true },
+  { id: 'ck_pork', name: 'Pork Belly', category: 'cooking', location: 'Main Kitchen', ...SAFE_RANGES.cooking, requiredChecks: [], active: true },
+  { id: 'ck_pie', name: 'Steak & Ale Pie', category: 'cooking', location: 'Main Kitchen', ...SAFE_RANGES.cooking, requiredChecks: [], active: true },
+  { id: 'ck_reheat', name: 'Reheated Sauces', category: 'cooking', location: 'Main Kitchen', ...SAFE_RANGES.cooking, requiredChecks: [], active: true },
+  { id: 'ck_fish', name: 'Pan-fried Sea Bass', category: 'cooking', location: 'Grill', ...SAFE_RANGES.cooking, requiredChecks: [], active: true },
   // Cooling
-  { id: 'cl_rice', name: 'Cooked Rice (cooling)', category: 'cooling', location: 'Blast Chiller', minTemp: null, maxTemp: 8, requiredChecks: [], active: true, notes: 'Must reach 8°C or below within 90 minutes.' },
-  { id: 'cl_stock', name: 'Beef Stock (cooling)', category: 'cooling', location: 'Blast Chiller', minTemp: null, maxTemp: 8, requiredChecks: [], active: true },
+  { id: 'cl_rice', name: 'Cooked Rice (cooling)', category: 'cooling', location: 'Blast Chiller', ...SAFE_RANGES.cooling, requiredChecks: [], active: true, notes: 'Must reach 8°C or below within 90 minutes.' },
+  { id: 'cl_stock', name: 'Beef Stock (cooling)', category: 'cooling', location: 'Blast Chiller', ...SAFE_RANGES.cooling, requiredChecks: [], active: true },
 ]
 
 const suppliers: Supplier[] = [

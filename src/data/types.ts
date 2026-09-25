@@ -266,6 +266,12 @@ export interface VenueSettings {
   chilledDeliveryMaxTemp: number
   /** Deliveries frozen above this are flagged for rejection. */
   frozenDeliveryMaxTemp: number
+  /**
+   * When this venue started keeping records in the app. Check windows that
+   * closed before it aren't counted as missed, so a venue set up this afternoon
+   * isn't marked down for this morning or last week. Absent means no cut-off.
+   */
+  recordsStartAt?: ISODateTime
 }
 
 /* -------------------------------------------------------------------------- */

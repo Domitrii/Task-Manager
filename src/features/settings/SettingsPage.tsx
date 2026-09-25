@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Database, Pencil, Plug, Plus, RotateCcw, Trash2 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Database, Pencil, Plug, Plus, QrCode, RotateCcw, Store, Trash2 } from 'lucide-react'
 import { CATEGORY_LABELS } from '@/config/navigation'
 import { useStore } from '@/data/store'
 import type {
@@ -14,7 +15,7 @@ import { CHECK_PERIOD_ORDER, formatRange } from '@/lib/compliance'
 import { cn, createId, initialsOf, titleCase } from '@/lib/utils'
 import { Avatar } from '@/components/ui/Avatar'
 import { Badge } from '@/components/ui/Badge'
-import { Button, IconButton } from '@/components/ui/Button'
+import { Button, ButtonLink, IconButton } from '@/components/ui/Button'
 import { Card, CardBody, CardHeader } from '@/components/ui/Card'
 import { Checkbox, Field, Select, TextInput, Textarea, Toggle } from '@/components/ui/Field'
 import { Modal } from '@/components/ui/Modal'
@@ -22,6 +23,7 @@ import { TableWrap, Td, Th, Tr } from '@/components/ui/Table'
 import { Tabs } from '@/components/ui/Tabs'
 import { useToast } from '@/components/ui/Toast'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { ShowQrButton } from '@/features/qr/ShowQrButton'
 
 type TabKey = 'venue' | 'equipment' | 'staff' | 'suppliers' | 'data'
 
@@ -199,10 +201,16 @@ function EquipmentTab() {
         title="Monitored equipment & processes"
         description="Safe ranges and check schedules used by every temperature page"
         action={
-          <Button variant="primary" size="sm" onClick={() => setCreating(true)} className="gap-1.5">
-            <Plus className="size-4" />
-            Add equipment
-          </Button>
+          <>
+            <ButtonLink to="/temperatures/labels" size="sm" className="gap-1.5">
+              <QrCode className="size-4" />
+              QR labels
+            </ButtonLink>
+            <Button variant="primary" size="sm" onClick={() => setCreating(true)} className="gap-1.5">
+              <Plus className="size-4" />
+              Add equipment
+            </Button>
+          </>
         }
       />
       <TableWrap>
@@ -245,6 +253,7 @@ function EquipmentTab() {
               <Td>{item.active ? <Badge tone="pass">Active</Badge> : <Badge tone="neutral">Inactive</Badge>}</Td>
               <Td className="text-right">
                 <span className="flex justify-end gap-1">
+                  <ShowQrButton item={item} />
                   <IconButton label="Edit equipment" size="sm" onClick={() => setEditing(item)}>
                     <Pencil className="size-4" />
                   </IconButton>
@@ -706,7 +715,9 @@ function SupplierModal({
 function DataTab() {
   const { data, resetDemoData } = useStore()
   const toast = useToast()
-  const [confirming, setConfirming] = useState(false)
+  const navigate = useNavigate()
+  const [confirming, setConfirming] = useState<'demo' | 'pack' | null>(null)
+  const close = () => setConfirming(null)
 
   const counts = [
     ['Temperature records', data.temperatureLogs.length],
@@ -716,6 +727,13 @@ function DataTab() {
     ['Stock items', data.stock.length],
     ['Tasks', data.tasks.length],
   ] as const
+
+  const replaced = (
+    <>
+      All {data.temperatureLogs.length} temperature records, {data.deliveries.length} deliveries and{' '}
+      {data.checklistRuns.length} checklist runs on this device
+    </>
+  )
 
   return (
     <div className="grid gap-5 lg:grid-cols-2">
@@ -763,36 +781,43 @@ function DataTab() {
         </Card>
 
         <Card>
-          <CardHeader title="Demo data" description="Reset the sample records used to explore the app" />
+          <CardHeader title="Start over" description="Replace everything held on this device" />
           <CardBody className="space-y-3">
             <p className="text-ink-muted text-[13px]">
-              Rebuilds two weeks of example temperature checks, deliveries and checklists relative to
-              today. Anything you have entered yourself will be discarded.
+              Reset demo data rebuilds two weeks of example temperature checks, deliveries and checklists
+              relative to today. Starting again from a setup pack asks a few questions about your venue and
+              begins with no history. Either way, anything you have entered yourself is discarded.
             </p>
-            <Button variant="danger" onClick={() => setConfirming(true)} className="gap-1.5">
-              <RotateCcw className="size-4" />
-              Reset demo data
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="danger" onClick={() => setConfirming('demo')} className="w-full gap-1.5 whitespace-normal sm:w-auto">
+                <RotateCcw className="size-4" />
+                Reset demo data
+              </Button>
+              <Button variant="danger" onClick={() => setConfirming('pack')} className="w-full gap-1.5 whitespace-normal sm:w-auto">
+                <Store className="size-4" />
+                Start again from a setup pack
+              </Button>
+            </div>
           </CardBody>
         </Card>
       </div>
 
       <Modal
-        open={confirming}
-        onClose={() => setConfirming(false)}
+        open={confirming === 'demo'}
+        onClose={close}
         title="Reset demo data?"
         description="This cannot be undone."
         size="sm"
         footer={
           <>
-            <Button variant="ghost" onClick={() => setConfirming(false)}>
+            <Button variant="ghost" onClick={close}>
               Cancel
             </Button>
             <Button
               variant="danger"
               onClick={async () => {
                 await resetDemoData()
-                setConfirming(false)
+                close()
                 toast.success('Demo data rebuilt', 'Two weeks of sample records have been regenerated.')
               }}
             >
@@ -803,8 +828,33 @@ function DataTab() {
       >
         <p className="text-ink-muted flex items-start gap-2 text-[13px]">
           <Database className="text-ink-subtle mt-0.5 size-4 shrink-0" />
-          All {data.temperatureLogs.length} temperature records, {data.deliveries.length} deliveries and{' '}
-          {data.checklistRuns.length} checklist runs on this device will be replaced with a fresh demo set.
+          <span>{replaced} will be replaced with a fresh demo set.</span>
+        </p>
+      </Modal>
+
+      <Modal
+        open={confirming === 'pack'}
+        onClose={close}
+        title="Start again from a setup pack?"
+        description="This cannot be undone."
+        size="sm"
+        footer={
+          <>
+            <Button variant="ghost" onClick={close}>
+              Cancel
+            </Button>
+            <Button variant="danger" onClick={() => navigate('/setup/venue')}>
+              Continue to setup
+            </Button>
+          </>
+        }
+      >
+        <p className="text-ink-muted flex items-start gap-2 text-[13px]">
+          <Database className="text-ink-subtle mt-0.5 size-4 shrink-0" />
+          <span>
+            {replaced} will be replaced when you finish setting up your venue. Nothing changes if you leave
+            setup before the last step.
+          </span>
         </p>
       </Modal>
     </div>

@@ -8,6 +8,7 @@ import { cn, groupBy } from '@/lib/utils'
 import { Avatar } from '@/components/ui/Avatar'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { ShowQrButton } from '@/features/qr/ShowQrButton'
 
 /**
  * The daily temperature log sheet: one row per item, one column per scheduled
@@ -100,9 +101,12 @@ export function CheckMatrix({
                       )
                     })}
                     <td className="border-line border-b px-3 py-2 text-right">
-                      <Button size="sm" onClick={() => onRecord(item)}>
-                        Record
-                      </Button>
+                      <span className="flex items-center justify-end gap-1">
+                        <ShowQrButton item={item} />
+                        <Button size="sm" onClick={() => onRecord(item)}>
+                          Log
+                        </Button>
+                      </span>
                     </td>
                   </tr>
                 ))}

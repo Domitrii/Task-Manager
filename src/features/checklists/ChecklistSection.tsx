@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { format } from 'date-fns'
 import { CheckCircle2, ClipboardCheck, ClipboardList, Clock } from 'lucide-react'
 import { selectChecklistStatus, staffName } from '@/data/selectors'
@@ -22,10 +22,13 @@ export function ChecklistSection({
   title,
   description,
   types,
+  filters,
 }: {
   title: string
   description: string
   types: ChecklistType[]
+  /** Chips for switching between checklist types, shown under the title. */
+  filters?: ReactNode
 }) {
   const now = useNow()
   const { data } = useStore()
@@ -48,7 +51,9 @@ export function ChecklistSection({
 
   return (
     <div className="space-y-5">
-      <PageHeader title={title} description={description} />
+      <PageHeader title={title} description={description}>
+        {filters}
+      </PageHeader>
 
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <StatCard

@@ -1,26 +1,22 @@
-import { NavLink, useLocation } from 'react-router-dom'
-import { X } from 'lucide-react'
-import { NAVIGATION, type NavBadge, type NavItem } from '@/config/navigation'
+import { NavLink } from 'react-router-dom'
+import { PRIMARY_NAV, RECORD_NAV, SETTINGS_NAV, type NavBadge, type NavItem } from '@/config/navigation'
+import { useStore } from '@/data/store'
 import { cn } from '@/lib/utils'
-import { IconButton } from '@/components/ui/Button'
 import { Logo } from './Logo'
 
-export interface SidebarCounters {
-  overdueChecks: number
-  openIssues: number
-  openTasks: number
-  rejectedDeliveries: number
-}
+export type CounterTone = 'fail' | 'warn' | 'neutral'
+export type NavCounters = Record<NavBadge, { value: number; tone: CounterTone }>
 
-function Counter({ value, tone }: { value: number; tone: 'fail' | 'warn' | 'neutral' }) {
+export function Counter({ value, tone, className }: { value: number; tone: CounterTone; className?: string }) {
   if (value <= 0) return null
   return (
     <span
       className={cn(
-        'ml-auto min-w-5 rounded-full px-1.5 py-0.5 text-center text-[11px] font-semibold tabular-nums',
-        tone === 'fail' && 'bg-fail-500 text-white',
+        'min-w-5 rounded-full px-1.5 py-px text-center text-[11px] leading-4 font-bold tabular-nums',
+        tone === 'fail' && 'bg-fail-600 text-white',
         tone === 'warn' && 'bg-warn-500 text-slate-950',
-        tone === 'neutral' && 'bg-white/10 text-sidebar-fg',
+        tone === 'neutral' && 'bg-surface-muted text-ink-muted',
+        className,
       )}
     >
       {value > 99 ? '99+' : value}
@@ -28,37 +24,18 @@ function Counter({ value, tone }: { value: number; tone: 'fail' | 'warn' | 'neut
   )
 }
 
-const BADGE_TONE: Record<NavBadge, 'fail' | 'warn' | 'neutral'> = {
-  overdueChecks: 'fail',
-  openIssues: 'fail',
-  rejectedDeliveries: 'warn',
-  openTasks: 'neutral',
-}
-
-function NavRow({
-  item,
-  counters,
-  onNavigate,
-  nested = false,
-}: {
-  item: NavItem
-  counters: SidebarCounters
-  onNavigate: () => void
-  nested?: boolean
-}) {
+function NavRow({ item, counters }: { item: NavItem; counters: NavCounters }) {
   const Icon = item.icon
   return (
     <NavLink
       to={item.to}
       end={item.end}
-      onClick={onNavigate}
       className={({ isActive }) =>
         cn(
-          'group flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors',
-          nested ? 'ml-3 py-1.5 text-[13px]' : '',
+          'group flex h-10 items-center gap-3 rounded-lg px-3 text-[15px] font-medium transition-colors',
           isActive
-            ? 'bg-sidebar-active text-white'
-            : 'text-sidebar-fg hover:bg-white/6 hover:text-white',
+            ? 'bg-brand-50 text-brand-800 dark:bg-brand-500/12 dark:text-brand-200'
+            : 'text-ink-muted hover:bg-surface-muted hover:text-ink',
         )
       }
     >
@@ -66,84 +43,44 @@ function NavRow({
         <>
           <Icon
             className={cn(
-              'shrink-0 transition-colors',
-              nested ? 'size-4' : 'size-4.5',
-              isActive ? 'text-brand-300' : 'text-sidebar-fg-muted group-hover:text-sidebar-fg',
+              'size-[18px] shrink-0',
+              isActive ? 'text-brand-600 dark:text-brand-300' : 'text-ink-subtle group-hover:text-ink-muted',
             )}
           />
           <span className="truncate">{item.label}</span>
-          {item.badge ? (
-            <Counter value={counters[item.badge]} tone={BADGE_TONE[item.badge]} />
-          ) : null}
+          {item.badge ? <Counter className="ml-auto" {...counters[item.badge]} /> : null}
         </>
       )}
     </NavLink>
   )
 }
 
-export function SidebarContent({
-  counters,
-  onNavigate,
-  onClose,
-}: {
-  counters: SidebarCounters
-  onNavigate: () => void
-  onClose?: () => void
-}) {
-  const location = useLocation()
-
+/** Desktop navigation. Phones get the bottom tab bar instead. */
+export function Sidebar({ counters }: { counters: NavCounters }) {
+  const { data } = useStore()
   return (
-    <div className="bg-sidebar flex h-full flex-col">
-      <div className="flex h-16 shrink-0 items-center justify-between px-4">
-        <Logo />
-        {onClose ? (
-          <IconButton
-            label="Close navigation"
-            size="sm"
-            onClick={onClose}
-            className="text-sidebar-fg hover:bg-white/10 hover:text-white lg:hidden"
-          >
-            <X className="size-4" />
-          </IconButton>
-        ) : null}
+    <div className="bg-surface border-line flex h-full flex-col border-r">
+      <div className="flex h-16 shrink-0 items-center px-5">
+        <Logo venue={data.settings.venueName} />
       </div>
 
-      <nav className="scrollbar-none flex-1 space-y-6 overflow-y-auto px-3 pb-6">
-        {NAVIGATION.map((section) => (
-          <div key={section.title}>
-            <p className="text-sidebar-fg-muted px-2.5 pb-1.5 text-[11px] font-semibold tracking-wider uppercase">
-              {section.title}
-            </p>
-            <div className="space-y-0.5">
-              {section.items.map((item) => {
-                // Child routes stay expanded while anywhere in that branch.
-                const branchActive = location.pathname.startsWith(item.to) && item.to !== '/'
-                return (
-                  <div key={item.to} className="space-y-0.5">
-                    <NavRow item={item} counters={counters} onNavigate={onNavigate} />
-                    {item.children && branchActive
-                      ? item.children.map((child) => (
-                          <NavRow
-                            key={child.to}
-                            item={child}
-                            counters={counters}
-                            onNavigate={onNavigate}
-                            nested
-                          />
-                        ))
-                      : null}
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        ))}
+      <nav aria-label="Main" className="scrollbar-none flex-1 overflow-y-auto px-3 pt-2 pb-6">
+        <div className="space-y-0.5">
+          {PRIMARY_NAV.map((item) => (
+            <NavRow key={item.to} item={item} counters={counters} />
+          ))}
+        </div>
+
+        <p className="text-ink-subtle mt-7 mb-1.5 px-3 text-[13px] font-medium">Records</p>
+        <div className="space-y-0.5">
+          {RECORD_NAV.map((item) => (
+            <NavRow key={item.to} item={item} counters={counters} />
+          ))}
+        </div>
       </nav>
 
-      <div className="border-t border-white/8 px-4 py-3">
-        <p className="text-sidebar-fg-muted text-[11px] leading-4">
-          Demo data · all records entered manually
-        </p>
+      <div className="border-line border-t px-3 py-3">
+        <NavRow item={SETTINGS_NAV} counters={counters} />
       </div>
     </div>
   )

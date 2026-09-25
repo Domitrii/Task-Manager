@@ -13,7 +13,6 @@ import {
   useEffect,
   useMemo,
   useReducer,
-  useRef,
   useState,
   type ReactNode,
 } from 'react'
@@ -147,6 +146,8 @@ export interface RecordTemperatureInput {
 interface StoreValue {
   data: AppData
   ready: boolean
+  /** False on a first run, until the venue is set up or demo data is loaded. */
+  hasData: boolean
   /** Staff member currently signed in on this device. */
   activeStaffId: ID
   setActiveStaffId: (id: ID) => void
@@ -170,6 +171,8 @@ interface StoreValue {
   saveSupplier: (supplier: Supplier) => void
   updateSettings: (changes: Partial<VenueSettings>) => void
   resetDemoData: () => Promise<void>
+  /** Replaces everything on this device, e.g. with a venue built from a setup pack. */
+  replaceData: (data: AppData) => void
 }
 
 const StoreContext = createContext<StoreValue | null>(null)
@@ -207,30 +210,36 @@ export function StoreProvider({
 }) {
   const [data, dispatch] = useReducer(reducer, EMPTY_DATA)
   const [ready, setReady] = useState(false)
+  const [hasData, setHasData] = useState(false)
   const [activeStaffId, setActiveStaffIdState] = useState<ID>('')
-  const hydrated = useRef(false)
+
+  /** Swaps in a whole dataset, keeping this device's signed-in person if they still exist. */
+  const applyData = useCallback((next: AppData) => {
+    dispatch({ type: 'hydrate', data: next })
+    const stored = localStorage.getItem(ACTIVE_STAFF_KEY)
+    const valid = next.staff.find((person) => person.id === stored && person.active)
+    setActiveStaffIdState(valid?.id ?? next.staff.find((person) => person.active)?.id ?? '')
+    setHasData(true)
+  }, [])
 
   useEffect(() => {
     let cancelled = false
     repository.load().then((loaded) => {
       if (cancelled) return
-      dispatch({ type: 'hydrate', data: loaded })
-      const stored = localStorage.getItem(ACTIVE_STAFF_KEY)
-      const valid = loaded.staff.find((person) => person.id === stored && person.active)
-      setActiveStaffIdState(valid?.id ?? loaded.staff.find((person) => person.active)?.id ?? '')
-      hydrated.current = true
+      if (loaded) applyData(loaded)
       setReady(true)
     })
     return () => {
       cancelled = true
     }
-  }, [repository])
+  }, [repository, applyData])
 
-  // Persist after hydration only, so the initial empty state never overwrites.
+  // Persist only once there is a real dataset, so the empty placeholder shown
+  // during a first run never gets saved and mistaken for a set-up venue.
   useEffect(() => {
-    if (!hydrated.current) return
+    if (!hasData) return
     repository.save(data)
-  }, [data, repository])
+  }, [data, hasData, repository])
 
   const setActiveStaffId = useCallback((id: ID) => {
     setActiveStaffIdState(id)
@@ -245,6 +254,7 @@ export function StoreProvider({
     return {
       data,
       ready,
+      hasData,
       activeStaffId,
       setActiveStaffId,
       activeStaff,
@@ -402,11 +412,14 @@ export function StoreProvider({
       },
 
       async resetDemoData() {
-        const fresh = await repository.reset()
-        dispatch({ type: 'hydrate', data: fresh })
+        applyData(await repository.reset())
+      },
+
+      replaceData(next) {
+        applyData(next)
       },
     }
-  }, [data, ready, activeStaffId, setActiveStaffId, repository])
+  }, [data, ready, hasData, activeStaffId, setActiveStaffId, repository, applyData])
 
   return <StoreContext value={value}>{children}</StoreContext>
 }

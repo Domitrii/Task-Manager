@@ -163,7 +163,16 @@ export function DeliveryFormModal({
     >
       <div className="space-y-5">
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Supplier" required htmlFor="delivery-supplier">
+          <Field
+            label="Supplier"
+            required
+            htmlFor="delivery-supplier"
+            hint={
+              data.suppliers.some((supplier) => supplier.active)
+                ? undefined
+                : 'No suppliers yet. Add them in Settings, under Suppliers.'
+            }
+          >
             <Select
               id="delivery-supplier"
               value={supplierId}

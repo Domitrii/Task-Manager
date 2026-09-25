@@ -59,20 +59,29 @@ export function Modal({
           widths[size],
         )}
       >
-        <div className="border-line flex items-start justify-between gap-4 border-b px-5 py-4">
+        {/* Grab handle: tells a phone user this is a sheet they can dismiss. */}
+        <span className="bg-line-strong mx-auto mt-2 h-1 w-10 shrink-0 rounded-full sm:hidden" aria-hidden />
+        <div className="border-line flex items-start justify-between gap-4 border-b px-5 pt-3 pb-4 sm:pt-4">
           <div className="min-w-0">
-            <h2 className="text-ink text-base font-semibold">{title}</h2>
-            {description ? <p className="text-ink-muted mt-0.5 text-[13px]">{description}</p> : null}
+            <h2 className="text-ink text-lg leading-snug font-bold">{title}</h2>
+            {description ? <p className="text-ink-muted mt-0.5 text-sm">{description}</p> : null}
           </div>
           <IconButton label="Close" size="sm" onClick={onClose}>
             <X className="size-4" />
           </IconButton>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">{children}</div>
+        <div
+          className={cn(
+            'min-h-0 flex-1 overflow-y-auto px-5 py-4',
+            !footer && 'pb-[max(1rem,env(safe-area-inset-bottom))]',
+          )}
+        >
+          {children}
+        </div>
 
         {footer ? (
-          <div className="border-line bg-surface-muted/60 flex flex-col-reverse gap-2 rounded-b-2xl border-t px-5 py-3.5 sm:flex-row sm:justify-end">
+          <div className="border-line bg-surface-muted/60 flex flex-col-reverse gap-2 border-t px-5 pt-3.5 pb-[max(0.875rem,env(safe-area-inset-bottom))] sm:flex-row sm:justify-end sm:rounded-b-2xl sm:pb-3.5">
             {footer}
           </div>
         ) : null}

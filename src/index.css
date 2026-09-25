@@ -18,10 +18,6 @@
   --fg: #0d1826;
   --fg-muted: #5c6b7d;
   --fg-subtle: #8b9aab;
-  --sidebar-bg: #0f2027;
-  --sidebar-fg: #cfe0e4;
-  --sidebar-fg-muted: #7e9aa3;
-  --sidebar-active: #17323c;
   --shadow-card: 0 1px 2px 0 rgb(13 24 38 / 0.04), 0 1px 3px 0 rgb(13 24 38 / 0.06);
   --shadow-raised: 0 4px 12px -2px rgb(13 24 38 / 0.08), 0 2px 6px -2px rgb(13 24 38 / 0.05);
   --shadow-overlay: 0 24px 48px -12px rgb(13 24 38 / 0.25);
@@ -38,10 +34,6 @@
   --fg: #e7eef4;
   --fg-muted: #93a6b6;
   --fg-subtle: #6b8093;
-  --sidebar-bg: #080f14;
-  --sidebar-fg: #c3d6db;
-  --sidebar-fg-muted: #6f8b95;
-  --sidebar-active: #13252d;
   --shadow-card: 0 1px 2px 0 rgb(0 0 0 / 0.3);
   --shadow-raised: 0 4px 12px -2px rgb(0 0 0 / 0.4);
   --shadow-overlay: 0 24px 48px -12px rgb(0 0 0 / 0.6);
@@ -58,10 +50,6 @@
   --color-ink: var(--fg);
   --color-ink-muted: var(--fg-muted);
   --color-ink-subtle: var(--fg-subtle);
-  --color-sidebar: var(--sidebar-bg);
-  --color-sidebar-fg: var(--sidebar-fg);
-  --color-sidebar-fg-muted: var(--sidebar-fg-muted);
-  --color-sidebar-active: var(--sidebar-active);
 
   --shadow-card: var(--shadow-card);
   --shadow-raised: var(--shadow-raised);
@@ -107,8 +95,11 @@
   --color-info-600: #2563eb;
   --color-info-700: #1d4ed8;
 
-  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  /* Figtree: open, friendly shapes with a big x-height that stays readable at
+     arm's length on a tablet at the pass, plain zeros for times, and tabular
+     figures so temperature columns line up. */
+  --font-sans: 'Figtree', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
 
   --radius-card: 0.75rem;
 }
@@ -128,9 +119,18 @@
     background-color: var(--app-bg);
     color: var(--fg);
     font-family: var(--font-sans);
-    font-feature-settings: 'cv11', 'ss01';
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Nothing in a kitchen app should wait on a slow animation. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      transition-duration: 0.01ms !important;
+      animation-duration: 0.01ms !important;
+    }
   }
 
   /* Temperatures, counts and timestamps must stay column-aligned in tables. */
@@ -155,6 +155,40 @@
   }
   ::-webkit-scrollbar-track {
     background: transparent;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Printing QR labels
+   A `.print-sheet` is portalled next to the app root while labels are on
+   screen. When one exists, printing shows only it; any other page prints as
+   the browser normally would.
+--------------------------------------------------------------------------- */
+@media screen {
+  .print-sheet {
+    display: none;
+  }
+}
+
+@media print {
+  @page {
+    margin: 10mm;
+  }
+
+  html:has(.print-sheet),
+  body:has(> .print-sheet) {
+    height: auto;
+    background: #fff;
+  }
+
+  body:has(> .print-sheet) > :not(.print-sheet) {
+    display: none !important;
+  }
+
+  .print-sheet {
+    color: #000;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
   }
 }
 

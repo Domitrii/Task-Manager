@@ -187,7 +187,7 @@ export function TasksPage() {
   )
 }
 
-function NewTaskModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function NewTaskModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { data, activeStaffId, addTask } = useStore()
   const toast = useToast()
   const [title, setTitle] = useState('')

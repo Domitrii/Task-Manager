@@ -1,14 +1,16 @@
 /**
  * Derived views over `AppData`.
  *
- * Pure functions of (data, now) so the dashboard, sidebar counters and reports
+ * Pure functions of (data, now) so the Today screen, nav badges and reports
  * all agree on what "overdue today" means.
  */
 import { isAfter, parseISO, subDays } from 'date-fns'
 import {
+  CHECK_PERIOD_ORDER,
   buildCheckSlots,
   daysUntil,
   isSameLocalDay,
+  isTrackedWindow,
   periodInterval,
   startOfDayLocal,
   summariseSlots,
@@ -17,6 +19,7 @@ import {
 } from '@/lib/compliance'
 import type {
   AppData,
+  CheckPeriodWindow,
   ChecklistTemplate,
   Delivery,
   FoodSafetyIssue,
@@ -152,13 +155,15 @@ export function selectChecklistStatus(
   const today = toISODate(now)
   return data.checklistTemplates
     .filter((template) => template.active && (!types || types.includes(template.type)))
-    .map((template) => {
+    .flatMap((template): ChecklistStatus[] => {
       const run = data.checklistRuns.find(
         (entry) => entry.templateId === template.id && entry.date === today,
       )
       const failedCount = run ? run.results.filter((result) => result.status === 'fail').length : 0
       const window = data.settings.periods.find((period) => period.period === template.period)
       const interval = window ? periodInterval(window, now) : undefined
+      // Not due today if its window shut before the venue started keeping records.
+      if (!run && interval && !isTrackedWindow(data.settings, interval.end)) return []
 
       let state: ChecklistStatus['state']
       if (run) state = failedCount > 0 ? 'issues' : 'complete'
@@ -167,7 +172,7 @@ export function selectChecklistStatus(
       else if (now >= interval.start) state = 'due'
       else state = 'upcoming'
 
-      return { template, run, state, failedCount }
+      return [{ template, run, state, failedCount }]
     })
 }
 
@@ -246,6 +251,189 @@ export function selectDashboard(data: AppData, now: Date): DashboardSummary {
     checklists,
     overallCompliance: requiredTotal === 0 ? null : Math.round((completedTotal / requiredTotal) * 100),
   }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Today — one list of everything scheduled                                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * What a task on the Today list asks of the person on shift.
+ *
+ * `missed` is a window that closed with nothing logged and no one has followed
+ * up. `late` is a miss where the item has been checked since — the miss stays on
+ * the record (the Temperatures page still counts it), it just no longer needs
+ * doing. Readings are never backdated into a closed window.
+ */
+export type TaskState = 'missed' | 'due' | 'upcoming' | 'failed' | 'late' | 'done'
+
+export type TodayTask =
+  | { kind: 'temperature'; key: string; state: TaskState; slot: CheckSlot; followUp?: TemperatureLog }
+  | { kind: 'checklist'; key: string; state: TaskState; checklist: ChecklistStatus }
+
+export interface TodayPeriod {
+  window: CheckPeriodWindow
+  start: Date
+  end: Date
+  timing: 'past' | 'now' | 'later'
+  tasks: TodayTask[]
+}
+
+export interface TodayOverview {
+  periods: TodayPeriod[]
+  total: number
+  /** Done, done late, or done with a failed reading — it was recorded. */
+  done: number
+  missed: number
+  due: number
+  upcoming: number
+  /** The window that is open now, if any. */
+  current?: TodayPeriod
+  /** The next window to open. */
+  next?: TodayPeriod
+}
+
+const TASK_ORDER: Record<TaskState, number> = { missed: 0, due: 1, upcoming: 2, failed: 3, late: 4, done: 5 }
+
+export function isActionable(task: TodayTask): boolean {
+  return task.state === 'missed' || task.state === 'due'
+}
+
+export function selectToday(data: AppData, now: Date): TodayOverview {
+  const day = startOfDayLocal(now)
+  const slots = selectTodaySlots(data, now)
+  const checklists = selectChecklistStatus(data, now)
+
+  const periods: TodayPeriod[] = [...data.settings.periods]
+    .sort((a, b) => CHECK_PERIOD_ORDER.indexOf(a.period) - CHECK_PERIOD_ORDER.indexOf(b.period))
+    .map((window): TodayPeriod => {
+      const { start, end } = periodInterval(window, day)
+      const timing = now > end ? 'past' : now >= start ? 'now' : 'later'
+      return { window, start, end, timing, tasks: [] }
+    })
+  const byPeriod = new Map(periods.map((period) => [period.window.period, period]))
+
+  for (const slot of slots) {
+    const period = byPeriod.get(slot.period)
+    if (!period) continue
+    let state: TaskState = slot.state === 'overdue' ? 'missed' : slot.state
+    let followUp: TemperatureLog | undefined
+    if (slot.state === 'overdue') {
+      // Logs are newest first, so this is the latest check since the window shut.
+      // No upper bound against `now`: the page clock ticks once a minute, so a
+      // reading saved seconds ago can sit "after" it and must still count.
+      followUp = data.temperatureLogs.find(
+        (log) => log.itemId === slot.item.id && parseISO(log.recordedAt) > period.end,
+      )
+      if (followUp) state = 'late'
+    }
+    period.tasks.push({ kind: 'temperature', key: `t-${slot.item.id}-${slot.period}`, state, slot, followUp })
+  }
+
+  for (const checklist of checklists) {
+    const period = byPeriod.get(checklist.template.period)
+    if (!period) continue
+    const state: TaskState =
+      checklist.state === 'complete'
+        ? 'done'
+        : checklist.state === 'issues'
+          ? 'failed'
+          : checklist.state === 'overdue'
+            ? 'missed'
+            : checklist.state
+    period.tasks.push({ kind: 'checklist', key: `c-${checklist.template.id}`, state, checklist })
+  }
+
+  for (const period of periods) {
+    period.tasks.sort((a, b) => TASK_ORDER[a.state] - TASK_ORDER[b.state])
+  }
+
+  const tasks = periods.flatMap((period) => period.tasks)
+  const count = (...states: TaskState[]) => tasks.filter((task) => states.includes(task.state)).length
+
+  return {
+    periods: periods.filter((period) => period.tasks.length > 0),
+    total: tasks.length,
+    done: count('done', 'failed', 'late'),
+    missed: count('missed'),
+    due: count('due'),
+    upcoming: count('upcoming'),
+    current: periods.find((period) => period.timing === 'now'),
+    next: periods.find((period) => period.timing === 'later' && period.tasks.length > 0),
+  }
+}
+
+/**
+ * Items with a temperature check to do now, in the order the Today list shows
+ * them. One entry per item: a unit that missed midday and is due this evening
+ * needs one reading, not two.
+ */
+export function selectActionableReadings(data: AppData, now: Date): CheckSlot[] {
+  const seen = new Set<ID>()
+  const result: CheckSlot[] = []
+  for (const task of selectToday(data, now).periods.flatMap((period) => period.tasks)) {
+    if (task.kind !== 'temperature' || !isActionable(task) || seen.has(task.slot.item.id)) continue
+    seen.add(task.slot.item.id)
+    result.push(task.slot)
+  }
+  return result
+}
+
+export interface DayCompletion {
+  date: string
+  day: Date
+  done: number
+  required: number
+  /** 0–100, or `null` when nothing was scheduled. */
+  rate: number | null
+  isToday: boolean
+}
+
+/**
+ * Share of each day's scheduled temperature checks and checklists that were
+ * recorded, oldest first. Today counts only windows that have opened, so the
+ * figure means "so far" rather than dragging down before service.
+ */
+export function selectDailyCompletion(
+  data: AppData,
+  days: number,
+  now: Date,
+): DayCompletion[] {
+  const results: DayCompletion[] = []
+  for (let offset = days - 1; offset >= 0; offset -= 1) {
+    const isToday = offset === 0
+    let done: number
+    let required: number
+    if (isToday) {
+      const today = selectToday(data, now)
+      done = today.done
+      required = today.total - today.upcoming
+    } else {
+      const endOfDay = new Date(startOfDayLocal(subDays(now, offset)).getTime() + 86_399_999)
+      const date = toISODate(endOfDay)
+      const slots = buildCheckSlots(data.items, data.temperatureLogs, data.settings, endOfDay)
+      const templates = data.checklistTemplates.filter((template) => {
+        if (!template.active) return false
+        const window = data.settings.periods.find((period) => period.period === template.period)
+        return !window || isTrackedWindow(data.settings, periodInterval(window, endOfDay).end)
+      })
+      const runs = new Set(data.checklistRuns.filter((run) => run.date === date).map((run) => run.templateId))
+      done =
+        slots.filter((slot) => slot.state === 'done' || slot.state === 'failed').length +
+        templates.filter((template) => runs.has(template.id)).length
+      required = slots.length + templates.length
+    }
+    const day = subDays(startOfDayLocal(now), offset)
+    results.push({
+      date: toISODate(day),
+      day,
+      done,
+      required,
+      rate: required === 0 ? null : Math.round((done / required) * 100),
+      isToday,
+    })
+  }
+  return results
 }
 
 /** Per-day pass/fail counts for the last `days` days, oldest first. */

@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
-import { CornerDownLeft, Package, Search, Thermometer } from 'lucide-react'
+import { CornerDownLeft, Flame, ListChecks, Package, Search, ShieldAlert, Thermometer } from 'lucide-react'
 import { ALL_NAV_ITEMS } from '@/config/navigation'
 import { useStore } from '@/data/store'
 import { cn } from '@/lib/utils'
+import type { QuickEntryApi } from './quickEntry'
 
 interface Command {
   id: string
@@ -15,16 +16,8 @@ interface Command {
   run: () => void
 }
 
-/** ⌘K launcher — navigation plus the two entry workflows staff use most. */
-export function CommandPalette({
-  onClose,
-  onRecordTemperature,
-  onRecordDelivery,
-}: {
-  onClose: () => void
-  onRecordTemperature: () => void
-  onRecordDelivery: () => void
-}) {
+/** ⌘K launcher — every way to log something, plus navigation and equipment. */
+export function CommandPalette({ onClose, api }: { onClose: () => void; api: QuickEntryApi }) {
   const navigate = useNavigate()
   const { data } = useStore()
   // Mounted only while open, so it always starts from an empty query.
@@ -32,26 +25,42 @@ export function CommandPalette({
   const [cursor, setCursor] = useState(0)
 
   const commands = useMemo<Command[]>(() => {
+    // Each action replaces the palette with its own sheet, so no explicit close.
     const actions: Command[] = [
       {
         id: 'action-temp',
-        label: 'Record a temperature check',
-        group: 'Actions',
+        label: 'Log a temperature',
+        group: 'Log',
         icon: <Thermometer className="size-4" />,
-        run: () => {
-          onClose()
-          onRecordTemperature()
-        },
+        run: () => api.recordTemperature(),
+      },
+      {
+        id: 'action-probe',
+        label: 'Log a food probe',
+        group: 'Log',
+        icon: <Flame className="size-4" />,
+        run: () => api.recordTemperature({ restrictTo: ['cooking', 'cooling'] }),
       },
       {
         id: 'action-delivery',
-        label: 'Record a delivery',
-        group: 'Actions',
+        label: 'Log a delivery',
+        group: 'Log',
         icon: <Package className="size-4" />,
-        run: () => {
-          onClose()
-          onRecordDelivery()
-        },
+        run: api.recordDelivery,
+      },
+      {
+        id: 'action-issue',
+        label: 'Report an issue',
+        group: 'Log',
+        icon: <ShieldAlert className="size-4" />,
+        run: api.raiseIssue,
+      },
+      {
+        id: 'action-task',
+        label: 'Add a task',
+        group: 'Log',
+        icon: <ListChecks className="size-4" />,
+        run: api.addTask,
       },
     ]
 
@@ -71,17 +80,14 @@ export function CommandPalette({
       .map((item) => ({
         id: `item-${item.id}`,
         label: item.name,
-        group: 'Equipment',
+        group: 'Log a reading for',
         hint: item.location,
         icon: <Thermometer className="size-4" />,
-        run: () => {
-          onClose()
-          navigate(`/temperatures?item=${item.id}`)
-        },
+        run: () => api.recordTemperature({ itemId: item.id }),
       }))
 
     return [...actions, ...pages, ...equipment]
-  }, [data.items, navigate, onClose, onRecordDelivery, onRecordTemperature])
+  }, [api, data.items, navigate, onClose])
 
   const results = useMemo(() => {
     const needle = query.trim().toLowerCase()
@@ -144,7 +150,7 @@ export function CommandPalette({
           ) : (
             Object.entries(grouped).map(([group, entries]) => (
               <div key={group} className="mb-1">
-                <p className="text-ink-subtle px-4 pt-2 pb-1 text-[11px] font-semibold tracking-wider uppercase">
+                <p className="text-ink-muted px-4 pt-2 pb-1 text-xs font-medium">
                   {group}
                 </p>
                 {entries.map((command) => {

@@ -2,23 +2,27 @@
  * Persistence boundary.
  *
  * The app only ever talks to a `DataRepository`. Today that is backed by
- * localStorage with generated demo data; swapping in an HTTP implementation
- * (POS, sensor feed, supplier EDI) means implementing this interface and
- * changing the single construction call in `main.tsx` — no UI changes.
+ * localStorage; swapping in an HTTP implementation (POS, sensor feed, supplier
+ * EDI) means implementing this interface and changing the single construction
+ * call in `main.tsx` — no UI changes.
  */
 import { createSeedData } from './seed'
 import type { AppData } from './types'
 
 export interface DataRepository {
-  load(): Promise<AppData>
+  /**
+   * The venue's stored data, or `null` when this device has none yet. A first
+   * run is routed to setup rather than given demo data it didn't ask for.
+   */
+  load(): Promise<AppData | null>
   save(data: AppData): Promise<void>
   /** Discards local state and rebuilds the demo dataset. */
   reset(): Promise<AppData>
 }
 
 const STORAGE_KEY = 'mise.appdata.v1'
-/** Bump when the shape of `AppData` changes so stale local state is rebuilt. */
-const SCHEMA_VERSION = 1
+/** Bump when the shape of `AppData` changes so stale local state is discarded. */
+const SCHEMA_VERSION = 2
 
 interface StoredEnvelope {
   version: number
@@ -33,7 +37,7 @@ export class LocalStorageRepository implements DataRepository {
     this.key = key
   }
 
-  async load(): Promise<AppData> {
+  async load(): Promise<AppData | null> {
     try {
       const raw = localStorage.getItem(this.key)
       if (raw) {
@@ -41,9 +45,9 @@ export class LocalStorageRepository implements DataRepository {
         if (envelope.version === SCHEMA_VERSION && envelope.data) return envelope.data
       }
     } catch {
-      // Corrupt or blocked storage (private mode) — fall through to a fresh set.
+      // Corrupt or blocked storage (private mode) — treated the same as none.
     }
-    return this.reset()
+    return null
   }
 
   async save(data: AppData): Promise<void> {
@@ -66,11 +70,15 @@ export class LocalStorageRepository implements DataRepository {
   }
 }
 
-/** In-memory repository, useful for tests and for demo mode without storage. */
+/** In-memory repository, useful for tests. Starts empty unless given data. */
 export class InMemoryRepository implements DataRepository {
-  private data: AppData = createSeedData(new Date())
+  private data: AppData | null
 
-  async load(): Promise<AppData> {
+  constructor(initial: AppData | null = null) {
+    this.data = initial
+  }
+
+  async load(): Promise<AppData | null> {
     return this.data
   }
 

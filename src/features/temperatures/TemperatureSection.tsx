@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
-import { AlertTriangle, CheckCircle2, Clock, Thermometer } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Clock, QrCode, Thermometer } from 'lucide-react'
 import {
   selectItemsForCategories,
   selectLatestReadings,
@@ -8,16 +7,18 @@ import {
   selectLogsForDay,
 } from '@/data/selectors'
 import { useStore } from '@/data/store'
+import { TEMPERATURE_VIEWS } from '@/config/navigation'
 import type { MonitoredCategory, MonitoredItem } from '@/data/types'
 import { buildCheckSlots, summariseSlots } from '@/lib/compliance'
 import { formatTime } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
-import { useQuickEntry } from '@/components/layout/AppShell'
-import { Button } from '@/components/ui/Button'
+import { useQuickEntry } from '@/components/layout/quickEntry'
+import { Button, ButtonLink } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Tabs } from '@/components/ui/Tabs'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { StatCard } from '@/components/shared/StatCard'
+import { ViewChips } from '@/components/shared/ViewChips'
 import { CheckMatrix } from './CheckMatrix'
 import { EquipmentStatusGrid } from './EquipmentStatusGrid'
 import { TemperatureHistoryTable } from './TemperatureHistoryTable'
@@ -52,7 +53,6 @@ export function TemperatureSection({
   const now = useNow()
   const { data } = useStore()
   const quickEntry = useQuickEntry()
-  const [searchParams, setSearchParams] = useSearchParams()
   const [tab, setTab] = useState<TabKey>('today')
 
   const scope = categories ?? ALL_CATEGORIES
@@ -73,15 +73,8 @@ export function TemperatureSection({
   const failedToday = todayLogs.filter((log) => log.outcome === 'fail')
   const lastLog = logs[0]
 
-  // A deep link from the command palette pre-selects the equipment to record.
-  const focusedItemId = searchParams.get('item') ?? undefined
-
   function openRecord(item?: MonitoredItem) {
     quickEntry.recordTemperature({ itemId: item?.id, restrictTo: categories })
-    if (focusedItemId) {
-      searchParams.delete('item')
-      setSearchParams(searchParams, { replace: true })
-    }
   }
 
   const scheduled = slots.length > 0
@@ -92,12 +85,20 @@ export function TemperatureSection({
         title={title}
         description={description}
         actions={
-          <Button variant="primary" onClick={() => openRecord()} className="gap-1.5">
-            <Thermometer className="size-4" />
-            Record temperature
-          </Button>
+          <>
+            <ButtonLink to="/temperatures/labels" className="gap-1.5">
+              <QrCode className="size-4" />
+              QR labels
+            </ButtonLink>
+            <Button variant="primary" onClick={() => openRecord()} className="gap-1.5">
+              <Thermometer className="size-4" />
+              Log a reading
+            </Button>
+          </>
         }
-      />
+      >
+        <ViewChips views={TEMPERATURE_VIEWS} label="Equipment type" />
+      </PageHeader>
 
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         {scheduled ? (

@@ -1,0 +1,107 @@
+import { SAFE_RANGES } from '../temperatureRanges'
+import { CHECKS, PROBE_NOTES, windows } from './common'
+import type { SetupPack } from './types'
+
+export const takeawayPack: SetupPack = {
+  id: 'takeaway',
+  name: 'Takeaway',
+  description: 'Counter, phone and app orders. Fryers, grills and hot holding.',
+  hours: { open: '17:00', close: '23:00' },
+  // Evening-only by default. Opening earlier brings the midday window into use.
+  periods: windows(['15:00', '17:30'], ['12:00', '14:30'], ['17:30', '21:30'], ['22:00', '00:00']),
+  units: {
+    fridge: { name: 'Fridge', location: 'Kitchen', ...SAFE_RANGES.fridge, requiredChecks: ['opening', 'evening', 'closing'], defaultCount: 2 },
+    freezer: { name: 'Freezer', location: 'Kitchen', ...SAFE_RANGES.freezer, requiredChecks: ['opening', 'closing'], defaultCount: 2 },
+    hot_holding: { name: 'Hot Holding Cabinet', location: 'Counter', ...SAFE_RANGES.hot_holding, requiredChecks: ['midday', 'evening'], defaultCount: 1 },
+  },
+  extras: [],
+  cooksFromRawByDefault: true,
+  probes: [
+    { key: 'chicken', name: 'Fried Chicken', category: 'cooking', location: 'Fryer', ...SAFE_RANGES.cooking, requiredChecks: [], notes: 'Probe the thickest piece from each fryer load.' },
+    { key: 'doner', name: 'Doner & Grilled Meat', category: 'cooking', location: 'Grill', ...SAFE_RANGES.cooking, requiredChecks: [], notes: 'Probe slices as they come off the spit, before serving.' },
+    { key: 'burger', name: 'Beef Burger', category: 'cooking', location: 'Grill', ...SAFE_RANGES.cooking, requiredChecks: [], notes: 'Minced meat is cooked right through, with no pink in the middle.' },
+    { key: 'curry', name: 'Reheated Curry & Sauces', category: 'cooking', location: 'Kitchen', ...SAFE_RANGES.cooking, requiredChecks: [], notes: PROBE_NOTES.reheat },
+    {
+      key: 'rice',
+      name: 'Cooked Rice (cooling)',
+      category: 'cooling',
+      location: 'Kitchen',
+      ...SAFE_RANGES.cooling,
+      requiredChecks: [],
+      notes: 'Cool within an hour, then refrigerate. Use within 24 hours and reheat once only.',
+    },
+    { key: 'sauce-cooling', name: 'Curry Sauce Batch (cooling)', category: 'cooling', location: 'Kitchen', ...SAFE_RANGES.cooling, requiredChecks: [], notes: PROBE_NOTES.cool },
+  ],
+  checklists: [
+    {
+      key: 'opening',
+      name: 'Opening Checks',
+      type: 'opening',
+      period: 'opening',
+      area: 'Kitchen',
+      items: [
+        CHECKS.temperaturesRecorded,
+        CHECKS.handWash,
+        CHECKS.probe,
+        CHECKS.noPests,
+        CHECKS.staffFit,
+        { label: 'Fryer oil topped up and fresh enough to use', hint: 'Change it if dark, foaming or smoking', critical: false },
+        CHECKS.surfacesClean,
+        { label: 'Delivery bags clean and dry', critical: false },
+      ],
+    },
+    {
+      key: 'closing',
+      name: 'Closing Checks',
+      type: 'closing',
+      period: 'closing',
+      area: 'Kitchen',
+      items: [
+        CHECKS.useBy,
+        CHECKS.coveredLabelled,
+        CHECKS.rawBelow,
+        { label: 'Leftover cooked rice chilled within an hour, or thrown away', critical: true, when: 'cooksFromRaw' },
+        CHECKS.hotHoldingEmptied,
+        CHECKS.closingTemperatures,
+        CHECKS.bins,
+        CHECKS.isolated,
+      ],
+    },
+    {
+      key: 'allergens',
+      name: 'Allergens & Orders',
+      type: 'food_safety',
+      period: 'evening',
+      area: 'Counter',
+      items: [
+        {
+          label: 'Allergen information up to date on the menu and every delivery app',
+          hint: 'Customers must be able to see allergens before they pay',
+          critical: true,
+        },
+        { label: 'Phone and counter orders asked about allergies', critical: true },
+        { label: 'Allergy orders made with clean equipment and labelled on the bag', critical: true },
+        CHECKS.rawSeparate,
+        CHECKS.cookedThrough,
+        CHECKS.hotHeldAbove63,
+        { label: 'Hot and cold food packed in separate delivery bags', critical: false },
+      ],
+    },
+    {
+      key: 'clean',
+      name: 'Takeaway Deep Clean',
+      type: 'cleaning',
+      period: 'closing',
+      area: 'Kitchen',
+      items: [
+        CHECKS.sanitiser,
+        CHECKS.fryers,
+        { label: 'Grill, griddle and doner machine cleaned', critical: false },
+        CHECKS.extraction,
+        { label: 'Delivery bags wiped inside and out, and sanitised', critical: false },
+        { label: 'Waste oil stored in a sealed drum for collection', critical: false },
+        CHECKS.floors,
+      ],
+    },
+  ],
+}

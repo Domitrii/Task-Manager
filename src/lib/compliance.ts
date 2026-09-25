@@ -2,7 +2,7 @@
  * Compliance rules.
  *
  * All pass/fail and overdue logic lives here so the same judgement is applied
- * in the dashboard, the section pages and the reports — and so the thresholds
+ * on the Today screen, the section pages and the reports — and so the thresholds
  * can later be driven by a backend policy instead of local settings.
  */
 import { format, isWithinInterval, parseISO } from 'date-fns'
@@ -51,7 +51,7 @@ export function isBorderline(item: MonitoredItem, log: TemperatureLog): boolean 
   return margin !== null && margin < 0.12
 }
 
-export function formatRange(item: MonitoredItem): string {
+export function formatRange(item: Pick<MonitoredItem, 'minTemp' | 'maxTemp'>): string {
   const { minTemp: min, maxTemp: max } = item
   if (min !== null && max !== null) return `${min}°C to ${max}°C`
   if (min !== null) return `${min}°C or above`
@@ -95,6 +95,14 @@ export function periodInterval(window: CheckPeriodWindow, date: Date): { start: 
   return { start, end }
 }
 
+/**
+ * Whether a window closing at `end` counts. Windows that closed before the
+ * venue started keeping records here were never missed — nobody was logging yet.
+ */
+export function isTrackedWindow(settings: VenueSettings, end: Date): boolean {
+  return !settings.recordsStartAt || end >= parseISO(settings.recordsStartAt)
+}
+
 export function periodForTime(windows: CheckPeriodWindow[], at: Date): CheckPeriod | undefined {
   const minutes = minutesSinceMidnight(at)
   const match = windows.find((window) => {
@@ -124,6 +132,7 @@ export function buildCheckSlots(
       const window = settings.periods.find((w) => w.period === period)
       if (!window) continue
       const { start, end } = periodInterval(window, day)
+      if (!isTrackedWindow(settings, end)) continue
       const log = logs.find(
         (entry) =>
           entry.itemId === item.id &&

@@ -92,7 +92,7 @@ export function MenuDivider() {
 
 export function MenuLabel({ children }: { children: ReactNode }) {
   return (
-    <p className="text-ink-subtle px-3 pt-2 pb-1 text-[11px] font-semibold tracking-wider uppercase">
+    <p className="text-ink-muted px-3 pt-2 pb-1 text-xs font-medium">
       {children}
     </p>
   )

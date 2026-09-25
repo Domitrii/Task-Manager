@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { staffName } from '@/data/selectors'
+import { ShowQrButton } from '@/features/qr/ShowQrButton'
 
 /** Current state of every item in a section — the "is anything wrong now?" view. */
 export function EquipmentStatusGrid({
@@ -91,9 +92,12 @@ export function EquipmentStatusGrid({
                   ? `${formatAgo(log.recordedAt)} · ${staffName(data, log.recordedBy)}`
                   : 'Never recorded'}
               </p>
-              <Button size="sm" onClick={() => onRecord(item)}>
-                Record
-              </Button>
+              <span className="flex shrink-0 items-center gap-1">
+                <ShowQrButton item={item} />
+                <Button size="sm" onClick={() => onRecord(item)}>
+                  Log
+                </Button>
+              </span>
             </div>
           </div>
         )

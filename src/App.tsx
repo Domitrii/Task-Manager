@@ -2,12 +2,13 @@ import { Suspense, lazy } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { AppShell } from '@/components/layout/AppShell'
 import { useStore } from '@/data/store'
-import { DashboardPage } from '@/features/dashboard/DashboardPage'
 import { DeliveriesPage } from '@/features/deliveries/DeliveriesPage'
 import { FoodSafetyPage } from '@/features/checklists/FoodSafetyPage'
-import { CleaningPage, OpeningClosingPage } from '@/features/checklists/pages'
+import { ChecklistsPage } from '@/features/checklists/pages'
 import { StockPage } from '@/features/stock/StockPage'
 import { TasksPage } from '@/features/tasks/TasksPage'
+import { ScanPage } from '@/features/qr/ScanPage'
+import { TodayPage } from '@/features/today/TodayPage'
 
 // Reports and Settings are visited far less than the daily-entry screens, so
 // they load on demand rather than adding to the first paint on the pass.
@@ -16,6 +17,13 @@ const ReportsPage = lazy(async () => ({
 }))
 const SettingsPage = lazy(async () => ({
   default: (await import('@/features/settings/SettingsPage')).SettingsPage,
+}))
+const QrLabelsPage = lazy(async () => ({
+  default: (await import('@/features/qr/QrLabelsPage')).QrLabelsPage,
+}))
+// Setup runs once per venue, so its packs stay out of the everyday bundle.
+const SetupPage = lazy(async () => ({
+  default: (await import('@/features/setup/SetupPage')).SetupPage,
 }))
 import {
   AllTemperaturesPage,
@@ -26,26 +34,54 @@ import {
 } from '@/features/temperatures/pages'
 
 export function App() {
-  const { ready } = useStore()
+  const { ready, hasData } = useStore()
 
   // The first paint waits for the repository so pages never flash empty state.
   if (!ready) return <BootSplash />
 
   return (
     <Routes>
-      <Route element={<AppShell />}>
-        <Route index element={<DashboardPage />} />
+      {/* Outside the shell: setup asks one thing at a time, with no nav to wander off into. */}
+      <Route
+        path="setup/*"
+        element={
+          <Suspense fallback={<BootSplash />}>
+            <SetupPage />
+          </Suspense>
+        }
+      />
+      {/* Where QR labels land. Full screen for one-handed use, and outside the
+          first-run redirect so a label scanned on the wrong device can say so. */}
+      <Route path="scan/:itemId" element={<ScanPage />} />
+      {/* A first run has nothing to show yet, so every page leads to setup. */}
+      <Route element={hasData ? <AppShell /> : <Navigate to="/setup" replace />}>
+        <Route index element={<TodayPage />} />
         <Route path="temperatures">
           <Route index element={<AllTemperaturesPage />} />
           <Route path="cooking" element={<CookingTemperaturesPage />} />
           <Route path="fridges" element={<FridgeTemperaturesPage />} />
           <Route path="freezers" element={<FreezerTemperaturesPage />} />
           <Route path="hot-holding" element={<HotHoldingTemperaturesPage />} />
+          <Route
+            path="labels"
+            element={
+              <Suspense fallback={<PageSkeleton />}>
+                <QrLabelsPage />
+              </Suspense>
+            }
+          />
         </Route>
         <Route path="deliveries" element={<DeliveriesPage />} />
         <Route path="food-safety" element={<FoodSafetyPage />} />
-        <Route path="cleaning" element={<CleaningPage />} />
-        <Route path="opening-closing" element={<OpeningClosingPage />} />
+        <Route path="checklists">
+          <Route index element={<ChecklistsPage view="all" />} />
+          <Route path="opening-closing" element={<ChecklistsPage view="opening-closing" />} />
+          <Route path="cleaning" element={<ChecklistsPage view="cleaning" />} />
+          <Route path="food-safety" element={<ChecklistsPage view="food-safety" />} />
+        </Route>
+        {/* Old addresses, kept so bookmarks on the kitchen tablet still land. */}
+        <Route path="cleaning" element={<Navigate to="/checklists/cleaning" replace />} />
+        <Route path="opening-closing" element={<Navigate to="/checklists/opening-closing" replace />} />
         <Route path="stock" element={<StockPage />} />
         <Route path="tasks" element={<TasksPage />} />
         <Route
