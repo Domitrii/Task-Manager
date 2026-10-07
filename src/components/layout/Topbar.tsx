@@ -9,6 +9,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { Button } from '@/components/ui/Button'
 import { Menu, MenuDivider, MenuItem, MenuLabel } from '@/components/ui/Menu'
 import { LogoMark } from './Logo'
+import { SyncIndicator } from './SyncIndicator'
 
 export function Topbar({ onOpenSearch, onOpenLog }: { onOpenSearch: () => void; onOpenLog: () => void }) {
   const location = useLocation()
@@ -45,6 +46,8 @@ export function Topbar({ onOpenSearch, onOpenLog }: { onOpenSearch: () => void; 
           </kbd>
         </button>
       </div>
+
+      <SyncIndicator />
 
       <Button variant="primary" onClick={onOpenLog} className="hidden gap-1.5 pr-5 lg:inline-flex">
         <Plus className="size-4.5" strokeWidth={2.5} />

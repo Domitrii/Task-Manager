@@ -1,7 +1,9 @@
 import { Suspense, lazy } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { AppShell } from '@/components/layout/AppShell'
+import { Button } from '@/components/ui/Button'
 import { useStore } from '@/data/store'
+import { useSync } from '@/features/account/sync'
 import { DeliveriesPage } from '@/features/deliveries/DeliveriesPage'
 import { FoodSafetyPage } from '@/features/checklists/FoodSafetyPage'
 import { ChecklistsPage } from '@/features/checklists/pages'
@@ -21,6 +23,9 @@ const SettingsPage = lazy(async () => ({
 const QrLabelsPage = lazy(async () => ({
   default: (await import('@/features/qr/QrLabelsPage')).QrLabelsPage,
 }))
+const TemplatesRoutes = lazy(async () => ({
+  default: (await import('@/features/templates/TemplatesRoutes')).TemplatesRoutes,
+}))
 // Setup runs once per venue, so its packs stay out of the everyday bundle.
 const SetupPage = lazy(async () => ({
   default: (await import('@/features/setup/SetupPage')).SetupPage,
@@ -37,7 +42,7 @@ export function App() {
   const { ready, hasData } = useStore()
 
   // The first paint waits for the repository so pages never flash empty state.
-  if (!ready) return <BootSplash />
+  if (!ready) return <BootSplash firstLoad />
 
   return (
     <Routes>
@@ -85,6 +90,14 @@ export function App() {
         <Route path="stock" element={<StockPage />} />
         <Route path="tasks" element={<TasksPage />} />
         <Route
+          path="templates/*"
+          element={
+            <Suspense fallback={<PageSkeleton />}>
+              <TemplatesRoutes />
+            </Suspense>
+          }
+        />
+        <Route
           path="reports"
           element={
             <Suspense fallback={<PageSkeleton />}>
@@ -120,7 +133,20 @@ function PageSkeleton() {
   )
 }
 
-function BootSplash() {
+/** `firstLoad`: waiting on the repository, which on a device's very first run means the network. */
+function BootSplash({ firstLoad = false }: { firstLoad?: boolean }) {
+  const synced = useSync()
+  // After its first load a device opens from its own copy, so only then is there anything to explain.
+  const sync = firstLoad ? synced : null
+  const waiting =
+    sync?.status.state === 'offline'
+      ? 'You’re offline. This device needs a connection once to download your venue, then it works without one.'
+      : sync?.status.state === 'error'
+        ? `Couldn’t reach your venue: ${sync.status.error}. Trying again…`
+        : sync?.status.state === 'signed-out'
+          ? 'This device was signed out before it finished downloading your venue.'
+          : null
+
   return (
     <div className="flex h-full items-center justify-center">
       <div className="flex flex-col items-center gap-3">
@@ -136,6 +162,13 @@ function BootSplash() {
           </svg>
         </span>
         <p className="text-ink-muted text-sm">Loading your venue…</p>
+        {waiting ? <p className="text-ink-muted max-w-xs px-4 text-center text-[13px]">{waiting}</p> : null}
+        {/* Nothing is on this device yet, so there is nothing for signing out to lose. */}
+        {sync?.status.state === 'signed-out' ? (
+          <Button variant="primary" onClick={() => void sync.signOut()}>
+            Sign in
+          </Button>
+        ) : null}
       </div>
     </div>
   )

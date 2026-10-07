@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { PRIMARY_NAV, RECORD_NAV, SETTINGS_NAV, type NavBadge, type NavItem } from '@/config/navigation'
+import { PRIMARY_NAV, RECORD_NAV, SETTINGS_NAV, TEMPLATES_NAV, type NavBadge, type NavItem } from '@/config/navigation'
 import { useStore } from '@/data/store'
 import { cn } from '@/lib/utils'
 import { Logo } from './Logo'
@@ -76,6 +76,11 @@ export function Sidebar({ counters }: { counters: NavCounters }) {
           {RECORD_NAV.map((item) => (
             <NavRow key={item.to} item={item} counters={counters} />
           ))}
+        </div>
+
+        <p className="text-ink-subtle mt-7 mb-1.5 px-3 text-[13px] font-medium">Plan</p>
+        <div className="space-y-0.5">
+          <NavRow item={TEMPLATES_NAV} counters={counters} />
         </div>
       </nav>
 

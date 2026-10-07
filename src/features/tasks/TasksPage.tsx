@@ -1,14 +1,15 @@
 import { useMemo, useState } from 'react'
 import { isPast, parseISO } from 'date-fns'
-import { CalendarClock, CheckCircle2, ListChecks, Plus, Trash2 } from 'lucide-react'
+import { CalendarClock, CheckCircle2, LayoutTemplate, ListChecks, Plus, Trash2 } from 'lucide-react'
 import { staffName } from '@/data/selectors'
 import { useStore } from '@/data/store'
-import type { Task, TaskPriority, TaskStatus } from '@/data/types'
+import type { ID, TaskCategory, TaskPriority, TaskStatus } from '@/data/types'
 import { formatRelativeDay } from '@/lib/format'
+import { exceptionCount, taskScore } from '@/lib/taskAnswers'
 import { cn, titleCase } from '@/lib/utils'
 import { Avatar } from '@/components/ui/Avatar'
 import { Badge } from '@/components/ui/Badge'
-import { Button, IconButton } from '@/components/ui/Button'
+import { Button, ButtonLink, IconButton } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Field, Select, TextInput, Textarea } from '@/components/ui/Field'
@@ -17,15 +18,19 @@ import { Tabs } from '@/components/ui/Tabs'
 import { useToast } from '@/components/ui/Toast'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { StatCard } from '@/components/shared/StatCard'
+import { TaskRunModal } from './TaskRunModal'
 
 type TabKey = 'open' | 'mine' | 'done'
 
-const CATEGORIES: Task['category'][] = ['compliance', 'maintenance', 'prep', 'admin', 'training']
+const CATEGORIES: TaskCategory[] = ['compliance', 'maintenance', 'prep', 'admin', 'training']
 
 export function TasksPage() {
   const { data, activeStaffId, updateTask, deleteTask } = useStore()
   const [tab, setTab] = useState<TabKey>('open')
   const [adding, setAdding] = useState(false)
+  // By id, so the sheet always shows the task as it is in the store.
+  const [runningId, setRunningId] = useState<ID | null>(null)
+  const running = data.tasks.find((task) => task.id === runningId)
 
   const open = useMemo(() => data.tasks.filter((task) => task.status !== 'done'), [data.tasks])
   const mine = useMemo(() => open.filter((task) => task.assigneeId === activeStaffId), [open, activeStaffId])
@@ -52,10 +57,16 @@ export function TasksPage() {
         title="Tasks"
         description="Everything that needs doing away from the pass: engineer visits, training, paperwork and prep."
         actions={
-          <Button variant="primary" onClick={() => setAdding(true)} className="gap-1.5">
-            <Plus className="size-4" />
-            New task
-          </Button>
+          <>
+            <ButtonLink to="/templates">
+              <LayoutTemplate className="size-4" />
+              From a template
+            </ButtonLink>
+            <Button variant="primary" onClick={() => setAdding(true)} className="gap-1.5">
+              <Plus className="size-4" />
+              New task
+            </Button>
+          </>
         }
       />
 
@@ -100,16 +111,22 @@ export function TasksPage() {
           <ul className="divide-line divide-y">
             {sorted.map((task) => {
               const isOverdue = task.status !== 'done' && task.dueAt && isPast(parseISO(task.dueAt))
+              const questionCount = task.questions?.length ?? 0
+              const exceptions = exceptionCount(task)
+              const score = taskScore(task)
               return (
                 <li key={task.id} className="flex items-start gap-3 px-4 py-3.5 sm:px-5">
                   <button
                     type="button"
-                    aria-label={task.status === 'done' ? 'Reopen task' : 'Mark complete'}
+                    aria-label={task.status === 'done' ? 'Reopen task' : questionCount > 0 ? 'Answer and complete' : 'Mark complete'}
                     onClick={() =>
-                      updateTask(task.id, {
-                        status: task.status === 'done' ? 'todo' : 'done',
-                        completedAt: task.status === 'done' ? undefined : new Date().toISOString(),
-                      })
+                      // Questions have to be answered first, so ticking one off opens them.
+                      task.status !== 'done' && questionCount > 0
+                        ? setRunningId(task.id)
+                        : updateTask(task.id, {
+                            status: task.status === 'done' ? 'todo' : 'done',
+                            completedAt: task.status === 'done' ? undefined : new Date().toISOString(),
+                          })
                     }
                     className={cn(
                       'mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-md border transition-colors',
@@ -122,14 +139,27 @@ export function TasksPage() {
                   </button>
 
                   <div className="min-w-0 flex-1">
-                    <p
-                      className={cn(
-                        'text-sm font-medium',
-                        task.status === 'done' ? 'text-ink-muted line-through' : 'text-ink',
-                      )}
-                    >
-                      {task.title}
-                    </p>
+                    {questionCount > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => setRunningId(task.id)}
+                        className={cn(
+                          'hover:text-brand-700 dark:hover:text-brand-300 text-left text-sm font-medium underline-offset-2 hover:underline',
+                          task.status === 'done' ? 'text-ink-muted line-through' : 'text-ink',
+                        )}
+                      >
+                        {task.title}
+                      </button>
+                    ) : (
+                      <p
+                        className={cn(
+                          'text-sm font-medium',
+                          task.status === 'done' ? 'text-ink-muted line-through' : 'text-ink',
+                        )}
+                      >
+                        {task.title}
+                      </p>
+                    )}
                     {task.description ? (
                       <p className="text-ink-muted mt-0.5 text-[13px]">{task.description}</p>
                     ) : null}
@@ -152,6 +182,21 @@ export function TasksPage() {
                         </span>
                       ) : null}
                       <Badge tone="neutral">{titleCase(task.category)}</Badge>
+                      {questionCount > 0 ? (
+                        <Badge tone="info">
+                          {questionCount} question{questionCount === 1 ? '' : 's'}
+                        </Badge>
+                      ) : null}
+                      {exceptions > 0 ? (
+                        <Badge tone="fail">
+                          {exceptions} exception{exceptions === 1 ? '' : 's'}
+                        </Badge>
+                      ) : null}
+                      {score && task.status === 'done' ? (
+                        <Badge tone="brand">
+                          Score {score.score}/{score.max}
+                        </Badge>
+                      ) : null}
                       {task.priority === 'high' ? <Badge tone="fail">High priority</Badge> : null}
                     </div>
                   </div>
@@ -183,6 +228,7 @@ export function TasksPage() {
       </Card>
 
       <NewTaskModal open={adding} onClose={() => setAdding(false)} />
+      {running ? <TaskRunModal key={running.id} task={running} onClose={() => setRunningId(null)} /> : null}
     </div>
   )
 }
@@ -195,7 +241,7 @@ export function NewTaskModal({ open, onClose }: { open: boolean; onClose: () => 
   const [assigneeId, setAssigneeId] = useState(activeStaffId)
   const [dueAt, setDueAt] = useState('')
   const [priority, setPriority] = useState<TaskPriority>('normal')
-  const [category, setCategory] = useState<Task['category']>('compliance')
+  const [category, setCategory] = useState<TaskCategory>('compliance')
 
   function handleSave() {
     if (!title.trim()) return
@@ -288,7 +334,7 @@ export function NewTaskModal({ open, onClose }: { open: boolean; onClose: () => 
             <Select
               id="task-category"
               value={category}
-              onChange={(event) => setCategory(event.target.value as Task['category'])}
+              onChange={(event) => setCategory(event.target.value as TaskCategory)}
             >
               {CATEGORIES.map((entry) => (
                 <option key={entry} value={entry}>

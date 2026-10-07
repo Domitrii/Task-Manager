@@ -3,6 +3,7 @@ import {
   ClipboardCheck,
   ClipboardList,
   Flame,
+  LayoutTemplate,
   ListChecks,
   type LucideIcon,
   Package,
@@ -49,6 +50,9 @@ export const RECORD_NAV: NavItem[] = [
 
 export const SETTINGS_NAV: NavItem = { label: 'Settings', to: '/settings', icon: Settings }
 
+/** Ready-made sets of tasks to add to someone's list. Lives under More on phones. */
+export const TEMPLATES_NAV: NavItem = { label: 'Task templates', to: '/templates', icon: LayoutTemplate }
+
 /** Printable QR labels for equipment. Reached from Temperatures and Settings. */
 export const QR_LABELS_NAV: NavItem = { label: 'QR labels', to: '/temperatures/labels', icon: QrCode }
 
@@ -72,6 +76,7 @@ export const CHECKLIST_VIEWS: NavItem[] = [
 export const ALL_NAV_ITEMS: NavItem[] = [
   ...PRIMARY_NAV,
   ...RECORD_NAV,
+  TEMPLATES_NAV,
   SETTINGS_NAV,
   QR_LABELS_NAV,
   ...TEMPERATURE_VIEWS.slice(1),

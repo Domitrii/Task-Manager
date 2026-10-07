@@ -1,13 +1,17 @@
 /**
  * Persistence boundary.
  *
- * The app only ever talks to a `DataRepository`. Today that is backed by
- * localStorage; swapping in an HTTP implementation (POS, sensor feed, supplier
- * EDI) means implementing this interface and changing the single construction
- * call in `main.tsx` — no UI changes.
+ * The app only ever talks to a `DataRepository`. `SupabaseRepository` syncs a
+ * venue between devices; `LocalStorageRepository` keeps everything on this one
+ * and is used when no Supabase keys are configured. Another backend (POS,
+ * sensor feed, supplier EDI) means implementing this interface and changing the
+ * construction in `main.tsx` — no UI changes.
  */
+import { withMissingLists, type RecordChange } from './records'
 import { createSeedData } from './seed'
 import type { AppData } from './types'
+
+export type RemoteListener = (changes: RecordChange[]) => void
 
 export interface DataRepository {
   /**
@@ -18,6 +22,11 @@ export interface DataRepository {
   save(data: AppData): Promise<void>
   /** Discards local state and rebuilds the demo dataset. */
   reset(): Promise<AppData>
+  /**
+   * Records that changed somewhere else (another device) after `load`. Only a
+   * repository shared between devices has anything to report.
+   */
+  subscribe?(listener: RemoteListener): () => void
 }
 
 const STORAGE_KEY = 'mise.appdata.v1'
@@ -42,7 +51,7 @@ export class LocalStorageRepository implements DataRepository {
       const raw = localStorage.getItem(this.key)
       if (raw) {
         const envelope = JSON.parse(raw) as StoredEnvelope
-        if (envelope.version === SCHEMA_VERSION && envelope.data) return envelope.data
+        if (envelope.version === SCHEMA_VERSION && envelope.data) return withMissingLists(envelope.data)
       }
     } catch {
       // Corrupt or blocked storage (private mode) — treated the same as none.

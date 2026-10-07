@@ -231,6 +231,8 @@ export interface StockItem {
 export type TaskPriority = 'low' | 'normal' | 'high'
 export type TaskStatus = 'todo' | 'in_progress' | 'done'
 
+export type TaskCategory = 'maintenance' | 'compliance' | 'admin' | 'prep' | 'training'
+
 export interface Task {
   id: ID
   title: string
@@ -239,9 +241,85 @@ export interface Task {
   dueAt?: ISODateTime
   priority: TaskPriority
   status: TaskStatus
-  category: 'maintenance' | 'compliance' | 'admin' | 'prep' | 'training'
+  category: TaskCategory
   createdAt: ISODateTime
   completedAt?: ISODateTime
+  /** What whoever does the task has to answer. Copied from a template, so editing either never changes the other. */
+  questions?: TaskQuestion[]
+  /** Keyed by question id. Answers to questions since removed are kept but ignored. */
+  answers?: Record<ID, TaskAnswer>
+  /** The template this task was added from, when it was. */
+  templateId?: ID
+}
+
+/* -------------------------------------------------------------------------- */
+/* Task templates — ready-made sets of tasks to add to someone's list          */
+/* -------------------------------------------------------------------------- */
+
+export type QuestionType = 'options' | 'text' | 'number' | 'check'
+
+/** What choosing an option asks of the person answering. */
+export type OptionAction = 'none' | 'request' | 'require'
+
+export interface QuestionOption {
+  id: ID
+  label: string
+  /** Counted only when the question has `scored` on. */
+  score: number
+  /** Choosing this option marks the answer as an exception, e.g. "No" to "Is the probe calibrated?". */
+  exception: boolean
+  /** `request` offers a note on what was done about it; `require` won't complete without one. */
+  action: OptionAction
+}
+
+export interface TaskQuestion {
+  id: ID
+  label: string
+  /** Guidance shown under the question while answering. */
+  hint?: string
+  type: QuestionType
+  /** Must be answered before the task can be completed. */
+  mandatory: boolean
+  /** `options` only. */
+  options: QuestionOption[]
+  /** `options` only: a row of buttons, or a dropdown for long lists. */
+  display: 'buttons' | 'dropdown'
+  /** `options` only: add up option scores into a score for the task. */
+  scored: boolean
+  /** `number` only, e.g. "°C" or "kg". */
+  unit?: string
+  /** `number` only: answers outside this inclusive range are exceptions. */
+  min?: number
+  max?: number
+}
+
+export interface TaskAnswer {
+  /** Option id, the typed text or number, or `'true'` for a ticked check. */
+  value: string
+  /** What was done about an exception. */
+  note?: string
+}
+
+export interface TemplateTask {
+  id: ID
+  title: string
+  description?: string
+  category: TaskCategory
+  priority: TaskPriority
+  questions: TaskQuestion[]
+}
+
+export interface TaskTemplate {
+  id: ID
+  name: string
+  /** One emoji, shown beside the name. */
+  icon?: string
+  /** When in the day it's done, e.g. "Before open" or "Ad hoc". Templates are listed under these. */
+  group: string
+  /** How often it's meant to happen, in words, e.g. "Every day in Open". */
+  schedule?: string
+  tags: string[]
+  tasks: TemplateTask[]
 }
 
 /* -------------------------------------------------------------------------- */
@@ -289,5 +367,6 @@ export interface AppData {
   issues: FoodSafetyIssue[]
   stock: StockItem[]
   tasks: Task[]
+  taskTemplates: TaskTemplate[]
   settings: VenueSettings
 }

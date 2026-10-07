@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Navigate, Route, Routes, useNavigate } from 'react-router-dom'
 import { ChevronRight, ClipboardCheck, Compass, type LucideIcon } from 'lucide-react'
 import { useStore } from '@/data/store'
+import { useSync } from '@/features/account/sync'
 import { cn } from '@/lib/utils'
 import { FocusFrame, FocusHeading } from '@/components/layout/FocusFrame'
 import { SetupFlow } from './SetupFlow'
@@ -22,6 +23,7 @@ export function SetupPage() {
 
 function SetupWelcome() {
   const { hasData, resetDemoData } = useStore()
+  const synced = useSync() !== null
   const navigate = useNavigate()
   const [loadingDemo, setLoadingDemo] = useState(false)
 
@@ -59,7 +61,11 @@ function SetupWelcome() {
         />
       </div>
 
-      <p className="text-ink-subtle mt-6 text-center text-xs">Everything is saved on this device.</p>
+      <p className="text-ink-subtle mt-6 text-center text-xs">
+        {synced
+          ? 'Everything is saved to your account, and kept on this device for when the signal drops.'
+          : 'Everything is saved on this device.'}
+      </p>
     </FocusFrame>
   )
 }

@@ -24,6 +24,7 @@ import {
 } from '@/data/buildFromSetupPack'
 import { SETUP_PACKS, getSetupPack, type SetupPack, type SetupPackId, type UnitCategory } from '@/data/setupPacks'
 import { useStore } from '@/data/store'
+import { useSync } from '@/features/account/sync'
 import { cn } from '@/lib/utils'
 import { Button, IconButton } from '@/components/ui/Button'
 import { Field, TextInput, Textarea } from '@/components/ui/Field'
@@ -59,6 +60,7 @@ const INPUT = 'h-12 text-base'
 
 export function SetupFlow() {
   const { data, hasData, replaceData } = useStore()
+  const synced = useSync() !== null
   const navigate = useNavigate()
   const toast = useToast()
   const [params, setParams] = useSearchParams()
@@ -195,7 +197,7 @@ export function SetupFlow() {
             >
               <TriangleAlert className="mt-0.5 size-4 shrink-0" />
               <p>
-                Creating this venue replaces everything on this device, including {data.temperatureLogs.length}{' '}
+                Creating this venue replaces everything {synced ? 'in your account, on every device signed in to it' : 'on this device'}, including {data.temperatureLogs.length}{' '}
                 temperature records, {data.deliveries.length} deliveries and {data.checklistRuns.length} checklist
                 runs.
               </p>

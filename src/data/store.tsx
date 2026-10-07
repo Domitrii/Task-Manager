@@ -18,6 +18,7 @@ import {
 } from 'react'
 import { deriveDeliveryStatus, evaluateTemperature } from '@/lib/compliance'
 import { createId } from '@/lib/utils'
+import { applyChanges, EMPTY_DATA, type RecordChange } from './records'
 import type { DataRepository } from './repository'
 import type {
   AppData,
@@ -31,12 +32,14 @@ import type {
   StockItem,
   Supplier,
   Task,
+  TaskTemplate,
   TemperatureLog,
   VenueSettings,
 } from './types'
 
 type Action =
   | { type: 'hydrate'; data: AppData }
+  | { type: 'remote/apply'; changes: RecordChange[] }
   | { type: 'temperature/add'; log: TemperatureLog }
   | { type: 'temperature/delete'; id: ID }
   | { type: 'delivery/add'; delivery: Delivery }
@@ -47,8 +50,12 @@ type Action =
   | { type: 'issue/add'; issue: FoodSafetyIssue }
   | { type: 'issue/update'; id: ID; changes: Partial<FoodSafetyIssue> }
   | { type: 'task/add'; task: Task }
+  | { type: 'task/addMany'; tasks: Task[] }
   | { type: 'task/update'; id: ID; changes: Partial<Task> }
   | { type: 'task/delete'; id: ID }
+  | { type: 'template/save'; template: TaskTemplate }
+  | { type: 'template/addMany'; templates: TaskTemplate[] }
+  | { type: 'template/delete'; id: ID }
   | { type: 'stock/update'; id: ID; changes: Partial<StockItem> }
   | { type: 'stock/add'; item: StockItem }
   | { type: 'item/save'; item: MonitoredItem }
@@ -73,6 +80,8 @@ function reducer(state: AppData, action: Action): AppData {
   switch (action.type) {
     case 'hydrate':
       return action.data
+    case 'remote/apply':
+      return applyChanges(state, action.changes)
     case 'temperature/add':
       return {
         ...state,
@@ -108,10 +117,18 @@ function reducer(state: AppData, action: Action): AppData {
       return { ...state, issues: patch(state.issues, action.id, action.changes) }
     case 'task/add':
       return { ...state, tasks: [action.task, ...state.tasks] }
+    case 'task/addMany':
+      return { ...state, tasks: [...action.tasks, ...state.tasks] }
     case 'task/update':
       return { ...state, tasks: patch(state.tasks, action.id, action.changes) }
     case 'task/delete':
       return { ...state, tasks: state.tasks.filter((task) => task.id !== action.id) }
+    case 'template/save':
+      return { ...state, taskTemplates: upsert(state.taskTemplates, action.template) }
+    case 'template/addMany':
+      return { ...state, taskTemplates: [...state.taskTemplates, ...action.templates] }
+    case 'template/delete':
+      return { ...state, taskTemplates: state.taskTemplates.filter((template) => template.id !== action.id) }
     case 'stock/update':
       return { ...state, stock: patch(state.stock, action.id, action.changes) }
     case 'stock/add':
@@ -163,6 +180,12 @@ interface StoreValue {
   addTask: (task: Omit<Task, 'id' | 'createdAt'>) => void
   updateTask: (id: ID, changes: Partial<Task>) => void
   deleteTask: (id: ID) => void
+  /** Adds several tasks at once, e.g. a template's tasks to someone's list. */
+  addTasks: (tasks: Omit<Task, 'id' | 'createdAt'>[]) => void
+  saveTaskTemplate: (template: TaskTemplate) => void
+  /** Appends templates after the ones already there, e.g. the starter library. */
+  addTaskTemplates: (templates: TaskTemplate[]) => void
+  deleteTaskTemplate: (id: ID) => void
   updateStock: (id: ID, changes: Partial<StockItem>) => void
   addStockItem: (item: Omit<StockItem, 'id'>) => void
   saveItem: (item: MonitoredItem) => void
@@ -176,28 +199,6 @@ interface StoreValue {
 }
 
 const StoreContext = createContext<StoreValue | null>(null)
-
-const EMPTY_DATA: AppData = {
-  staff: [],
-  items: [],
-  temperatureLogs: [],
-  suppliers: [],
-  deliveries: [],
-  checklistTemplates: [],
-  checklistRuns: [],
-  issues: [],
-  stock: [],
-  tasks: [],
-  settings: {
-    venueName: '',
-    siteReference: '',
-    address: '',
-    temperatureUnit: 'C',
-    periods: [],
-    chilledDeliveryMaxTemp: 8,
-    frozenDeliveryMaxTemp: -15,
-  },
-}
 
 const ACTIVE_STAFF_KEY = 'mise.activeStaff'
 
@@ -233,6 +234,12 @@ export function StoreProvider({
       cancelled = true
     }
   }, [repository, applyData])
+
+  // Records from the venue's other devices, merged over whatever is on screen.
+  useEffect(
+    () => repository.subscribe?.((changes) => dispatch({ type: 'remote/apply', changes })),
+    [repository],
+  )
 
   // Persist only once there is a real dataset, so the empty placeholder shown
   // during a first run never gets saved and mistaken for a set-up venue.
@@ -381,6 +388,23 @@ export function StoreProvider({
 
       deleteTask(id) {
         dispatch({ type: 'task/delete', id })
+      },
+
+      addTasks(tasks) {
+        const createdAt = new Date().toISOString()
+        dispatch({ type: 'task/addMany', tasks: tasks.map((task) => ({ ...task, id: createId('tk'), createdAt })) })
+      },
+
+      saveTaskTemplate(template) {
+        dispatch({ type: 'template/save', template })
+      },
+
+      addTaskTemplates(templates) {
+        dispatch({ type: 'template/addMany', templates })
+      },
+
+      deleteTaskTemplate(id) {
+        dispatch({ type: 'template/delete', id })
       },
 
       updateStock(id, changes) {

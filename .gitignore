@@ -15,3 +15,8 @@ dist-ssr
 *.sln
 *.sw?
 .vercel
+
+# Environment — keys stay out of git; .env.example documents the names
+.env
+.env.*
+!.env.example

@@ -1,6 +1,6 @@
 import { NavLink, useLocation } from 'react-router-dom'
 import { ChevronRight, Menu as MenuIcon, Moon, Plus, Sun } from 'lucide-react'
-import { PRIMARY_NAV, RECORD_NAV, SETTINGS_NAV, type NavItem } from '@/config/navigation'
+import { PRIMARY_NAV, RECORD_NAV, SETTINGS_NAV, TEMPLATES_NAV, type NavItem } from '@/config/navigation'
 import { useTheme } from '@/lib/theme'
 import { cn } from '@/lib/utils'
 import { Modal } from '@/components/ui/Modal'
@@ -43,7 +43,7 @@ export function BottomNav({
   onOpenMore: () => void
 }) {
   const location = useLocation()
-  const inMore = [...RECORD_NAV, SETTINGS_NAV].some((item) => location.pathname.startsWith(item.to))
+  const inMore = [...RECORD_NAV, TEMPLATES_NAV, SETTINGS_NAV].some((item) => location.pathname.startsWith(item.to))
   const [today, tasks, reports] = PRIMARY_NAV
 
   return (
@@ -80,7 +80,7 @@ export function BottomNav({
 
 export function MoreSheet({ counters, onClose }: { counters: NavCounters; onClose: () => void }) {
   const { theme, toggle } = useTheme()
-  const rows = [...RECORD_NAV, SETTINGS_NAV]
+  const rows = [...RECORD_NAV, TEMPLATES_NAV, SETTINGS_NAV]
 
   return (
     <Modal open onClose={onClose} title="More">

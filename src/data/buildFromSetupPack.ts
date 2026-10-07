@@ -3,13 +3,15 @@
  *
  * Everything is copied into new records with new ids. Nothing links back to
  * the pack, so changing a pack later never touches a venue that was already
- * set up. Logs, runs, deliveries, issues, tasks and stock all start empty.
+ * set up. Logs, runs, deliveries, issues, tasks and stock all start empty;
+ * task templates start as the starter library.
  *
  * `planSetup` is the same work without the ids, so the preview can show
  * exactly what will be created and let the venue untick parts of it.
  */
 import { createId, initialsOf } from '@/lib/utils'
 import type { PackCondition, PackItem, SetupPack, UnitCategory } from './setupPacks'
+import { createTemplateLibrary } from './taskTemplateLibrary'
 import { DELIVERY_LIMITS } from './temperatureRanges'
 import type {
   AppData,
@@ -282,6 +284,7 @@ export function buildDataFromSetupPack(pack: SetupPack, answers: SetupAnswers, n
     issues: [],
     stock: [],
     tasks: [],
+    taskTemplates: createTemplateLibrary(),
     settings: {
       venueName: answers.venueName.trim(),
       siteReference: '',

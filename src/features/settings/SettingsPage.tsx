@@ -23,6 +23,8 @@ import { TableWrap, Td, Th, Tr } from '@/components/ui/Table'
 import { Tabs } from '@/components/ui/Tabs'
 import { useToast } from '@/components/ui/Toast'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { AccountCard } from '@/features/account/AccountCard'
+import { useSync } from '@/features/account/sync'
 import { ShowQrButton } from '@/features/qr/ShowQrButton'
 
 type TabKey = 'venue' | 'equipment' | 'staff' | 'suppliers' | 'data'
@@ -714,6 +716,7 @@ function SupplierModal({
 
 function DataTab() {
   const { data, resetDemoData } = useStore()
+  const synced = useSync() !== null
   const toast = useToast()
   const navigate = useNavigate()
   const [confirming, setConfirming] = useState<'demo' | 'pack' | null>(null)
@@ -731,14 +734,17 @@ function DataTab() {
   const replaced = (
     <>
       All {data.temperatureLogs.length} temperature records, {data.deliveries.length} deliveries and{' '}
-      {data.checklistRuns.length} checklist runs on this device
+      {data.checklistRuns.length} checklist runs {synced ? 'in this venue, on every device signed in to it,' : 'on this device'}
     </>
   )
 
   return (
     <div className="grid gap-5 lg:grid-cols-2">
       <Card>
-        <CardHeader title="Stored records" description="Everything currently held on this device" />
+        <CardHeader
+          title="Stored records"
+          description={synced ? 'Shared by every device signed in to this venue' : 'Everything currently held on this device'}
+        />
         <CardBody>
           <dl className="grid grid-cols-2 gap-3">
             {counts.map(([label, value]) => (
@@ -752,6 +758,8 @@ function DataTab() {
       </Card>
 
       <div className="space-y-5">
+        <AccountCard />
+
         <Card>
           <CardHeader
             title="Integrations"
@@ -781,7 +789,10 @@ function DataTab() {
         </Card>
 
         <Card>
-          <CardHeader title="Start over" description="Replace everything held on this device" />
+          <CardHeader
+            title="Start over"
+            description={synced ? 'Replace everything in this venue, on every device' : 'Replace everything held on this device'}
+          />
           <CardBody className="space-y-3">
             <p className="text-ink-muted text-[13px]">
               Reset demo data rebuilds two weeks of example temperature checks, deliveries and checklists

@@ -21,9 +21,28 @@ On first run the app opens `/setup`, which offers two ways in:
 
 Either can be redone later from **Settings → Data**.
 
+### Connecting Supabase
+
+Without Supabase keys the app keeps everything on the device it runs on. With them, each venue
+is an account, every device signed in to it shares the same records, and recording carries on
+offline (see *Sync and offline* below).
+
+1. In the Supabase dashboard, open **SQL Editor** and run
+   `supabase/migrations/20260930000000_records.sql` (or `supabase db push` with the CLI).
+2. Copy `.env.example` to `.env` and fill in the project URL and the **publishable** key from
+   **Settings → API**. The secret key is never needed by this app and must not go in a `VITE_`
+   variable, because those are bundled into the browser build.
+3. Under **Authentication → URL Configuration**, set the Site URL to where the app is deployed and
+   add `http://localhost:5173` as a redirect URL, so sign-up confirmation links come back to the app.
+4. On Vercel, add the same two `VITE_` variables to the project and redeploy.
+
+The first device to sign in to an empty venue offers setup as before. If that device already has
+records from before sync, they are uploaded into the account instead.
+
 ## Stack
 
-React 19 · TypeScript · Vite · Tailwind CSS v4 · React Router · Recharts · date-fns · lucide-react
+React 19 · TypeScript · Vite · Tailwind CSS v4 · React Router · Recharts · date-fns · lucide-react ·
+Supabase (auth + Postgres) · idb-keyval · vite-plugin-pwa
 
 ## How it is put together
 
@@ -35,7 +54,7 @@ src/
     ui/          design-system primitives (Button, Card, Badge, Field, Table, Modal…)
     shared/      composed pieces used across features (StatCard, PageHeader, charts…)
     layout/      app shell, sidebar, bottom tabs, topbar, Log sheet, command palette
-  features/      one folder per section of the app (today/ is the home screen)
+  features/      one folder per section of the app (today/ is the home screen; account/ is sign-in and sync)
   config/        navigation structure and category labels
 ```
 
@@ -55,9 +74,9 @@ interface DataRepository {
 }
 ```
 
-`LocalStorageRepository` is the current implementation. Putting this on a real backend means
-writing an `HttpRepository` and changing one line in `main.tsx` — no screen changes. That is
-the seam integrations arrive through:
+`SupabaseRepository` syncs a venue between devices (next section); `LocalStorageRepository`
+keeps everything on one device and is used when no Supabase keys are set. `main.tsx` picks one,
+and no screen knows which. That is also the seam integrations arrive through:
 
 | Integration | Where it plugs in |
 |---|---|
@@ -69,6 +88,44 @@ the seam integrations arrive through:
 intent-shaped (`recordTemperature`, `saveDelivery`, `recordChecklistRun`) rather than generic
 setters, which keeps the compliance side effects in one place — a failed reading, a rejected
 delivery line and a failed critical checklist item all raise a food safety issue from there.
+
+### Sync and offline
+
+Staff never wait on the network. `SupabaseRepository` (`data/supabaseRepository.ts`) writes every
+save to IndexedDB first, so logging works with no signal at all, then:
+
+- **Diffs each save into records.** `data/records.ts` turns `AppData` into one record per entity,
+  keyed by its list and id: a reading, a fridge, a task, the venue settings. They are stored as
+  rows of a single `records` table (`supabase/migrations/`), so devices merge record by record
+  rather than overwriting each other's whole dataset. Two phones that log readings offline both
+  keep theirs.
+- **Queues them in an outbox.** Each unsent change is its own IndexedDB entry, so it survives a
+  reload, and another tab picks it up if the tab that queued it closed while offline.
+- **Pushes, then pulls.** Whenever the device is online and signed in, it uploads the outbox and
+  asks for everything changed since it last looked. A Realtime notification, reconnecting, coming
+  back to the tab and a one-minute poll all trigger this. Remote changes reach the store as a
+  `remote/apply` action, merged over whatever is on screen.
+- **Resolves conflicts per record, last write wins.** Most records are only ever added, so in
+  practice devices only contend when two people edit the same task, issue or setting at once.
+
+Deletes are tombstones, so a device that was offline still hears about them. `updated_at` is set by
+the server, not the device, so a phone with the wrong clock can't hide its changes. Lists the app
+keeps in entry order (equipment, staff, suppliers) carry a sort key, so a new device shows them in
+the same order.
+
+A venue is one Supabase account and its devices share the login, matching how the app already
+works: staff pick who they are from the top bar. Row-level security limits each account to its own
+records. A device remembers its venue after the first sign-in and opens straight into it,
+including offline, until it is signed out from **Settings → Data**. Signing out warns before
+discarding anything that hasn't synced.
+
+The sync state shows in the top bar and in **Settings → Data**. It is deliberately neutral:
+status colours are kept for compliance, and an offline device is working as intended.
+
+A service worker (`vite-plugin-pwa`) caches the app itself, so a reload in the walk-in, or a QR
+label scanned with no signal, still opens. It is only generated by `npm run build`, not in dev.
+
+### Derived views
 
 `data/selectors.ts` holds derived views. The Today screen, the nav badges, the check rounds
 and the reports all read from the same selectors, so they can never disagree about what
@@ -103,10 +160,9 @@ for each unit, and any list of equipment has a **Show QR** action. Each code is 
 browser with the `qrcode` package and encodes `${origin}/scan/{itemId}`, a full-screen
 logging page that saves through the same `recordTemperature` as the Log sheet.
 
-> **Scanning only works on the device that holds the data.** Records live in that browser's
-> localStorage, so a label scanned on any other phone opens a "not set up on this device"
-> page. Labels will work from any device once an `HttpRepository` replaces
-> `LocalStorageRepository` (see *The data layer*); the URLs won't need to change.
+> **With Supabase connected, labels work from any phone.** A phone that has never been used
+> signs in first and then lands on the label's page. Without Supabase, records live in one
+> browser, so a label scanned on any other phone opens a "not set up on this device" page.
 
 ### The compliance rules
 
