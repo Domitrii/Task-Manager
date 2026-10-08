@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
 const url = import.meta.env.VITE_SUPABASE_URL
 const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
@@ -24,4 +24,26 @@ if (emailLinkError) window.history.replaceState(null, '', window.location.pathna
  * Only the publishable key belongs here. It is safe in the browser because
  * row-level security limits each account to its own team's records.
  */
-export const supabase = url && key ? createClient(url, key) : null
+export const supabase = url && key ? createClient(url, key, { auth: { storageKey: sessionKey(url) } }) : null
+
+/** Where the session is kept. Supabase's own default, named here so signing out can be sure it's gone. */
+function sessionKey(projectUrl: string): string {
+  return `sb-${new URL(projectUrl).hostname.split('.')[0]}-auth-token`
+}
+
+/**
+ * Signs this device out. Supabase asks the server to end the session first and
+ * keeps it if that request fails (a bad connection, a server error, a rate
+ * limit), which would sign the device straight back in on the next reload or
+ * token refresh. Signing out of a device has to work regardless, so the saved
+ * session is removed here either way.
+ */
+export async function signOutThisDevice(client: SupabaseClient): Promise<void> {
+  try {
+    const { error } = await client.auth.signOut({ scope: 'local' })
+    if (!error) return
+  } catch {
+    // Treated the same as a failed request.
+  }
+  if (url) localStorage.removeItem(sessionKey(url))
+}

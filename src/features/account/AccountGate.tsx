@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type R
 import type { SupabaseClient, User } from '@supabase/supabase-js'
 import type { DataRepository, LocalStorageRepository } from '@/data/repository'
 import { SupabaseRepository } from '@/data/supabaseRepository'
-import { openedFromPasswordReset } from '@/lib/supabase'
+import { openedFromPasswordReset, signOutThisDevice } from '@/lib/supabase'
 import { NewPasswordPage } from './NewPasswordPage'
 import { SignInPage } from './SignInPage'
 import { authErrorMessage, SyncContext, type SyncApi } from './sync'
@@ -78,7 +78,7 @@ export function AccountGate({
 
   const signOut = useCallback(async () => {
     // This device only: the account's other devices stay signed in.
-    await client.auth.signOut({ scope: 'local' })
+    await signOutThisDevice(client)
     update(null)
   }, [client, update])
 
