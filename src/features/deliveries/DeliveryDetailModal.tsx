@@ -1,4 +1,4 @@
-import { AlertTriangle, CalendarClock, FileText, Thermometer, Truck, User } from 'lucide-react'
+import { AlertTriangle, CalendarClock, FileText, Repeat, Thermometer, Truck, User } from 'lucide-react'
 import { staffName } from '@/data/selectors'
 import { useStore } from '@/data/store'
 import type { Delivery } from '@/data/types'
@@ -14,10 +14,12 @@ export function DeliveryDetailModal({
   delivery,
   onClose,
   onEdit,
+  onRepeat,
 }: {
   delivery: Delivery | undefined
   onClose: () => void
   onEdit: (delivery: Delivery) => void
+  onRepeat: (delivery: Delivery) => void
 }) {
   const { data } = useStore()
   if (!delivery) return null
@@ -36,6 +38,10 @@ export function DeliveryDetailModal({
         <>
           <Button variant="ghost" onClick={onClose}>
             Close
+          </Button>
+          <Button onClick={() => onRepeat(delivery)} className="gap-1.5">
+            <Repeat className="size-4" />
+            Repeat delivery
           </Button>
           <Button variant="primary" onClick={() => onEdit(delivery)}>
             Edit delivery

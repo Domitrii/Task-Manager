@@ -1,6 +1,6 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { Check, ChevronDown, Moon, Plus, Search, Sun } from 'lucide-react'
+import { Check, ChevronDown, LogOut, Moon, Plus, Search, Sun } from 'lucide-react'
 import { ALL_NAV_ITEMS } from '@/config/navigation'
 import { useStore } from '@/data/store'
 import { useTheme } from '@/lib/theme'
@@ -8,6 +8,8 @@ import { titleCase } from '@/lib/utils'
 import { Avatar } from '@/components/ui/Avatar'
 import { Button } from '@/components/ui/Button'
 import { Menu, MenuDivider, MenuItem, MenuLabel } from '@/components/ui/Menu'
+import { SignOutModal } from '@/features/account/AccountCard'
+import { useSync } from '@/features/account/sync'
 import { LogoMark } from './Logo'
 import { SyncIndicator } from './SyncIndicator'
 
@@ -15,6 +17,8 @@ export function Topbar({ onOpenSearch, onOpenLog }: { onOpenSearch: () => void; 
   const location = useLocation()
   const { data, activeStaff, setActiveStaffId } = useStore()
   const { theme, toggle } = useTheme()
+  const sync = useSync()
+  const [signingOut, setSigningOut] = useState(false)
 
   const pageTitle = useMemo(() => {
     const matches = ALL_NAV_ITEMS.filter((item) =>
@@ -101,9 +105,28 @@ export function Topbar({ onOpenSearch, onOpenLog }: { onOpenSearch: () => void; 
             >
               {theme === 'dark' ? 'Light mode' : 'Dark mode'}
             </MenuItem>
+            {sync ? (
+              <>
+                <MenuDivider />
+                <MenuLabel>
+                  {sync.email} · {sync.team.name}
+                </MenuLabel>
+                <MenuItem
+                  icon={<LogOut className="size-4" />}
+                  onClick={() => {
+                    setSigningOut(true)
+                    close()
+                  }}
+                >
+                  Sign out
+                </MenuItem>
+              </>
+            ) : null}
           </>
         )}
       </Menu>
+
+      {sync && signingOut ? <SignOutModal sync={sync} onClose={() => setSigningOut(false)} /> : null}
     </header>
   )
 }

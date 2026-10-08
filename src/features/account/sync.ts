@@ -3,16 +3,24 @@ import { isAuthRetryableFetchError, type AuthError } from '@supabase/supabase-js
 import { CloudAlert, CloudCheck, CloudOff, CloudUpload, type LucideIcon } from 'lucide-react'
 import type { SyncStatus } from '@/data/supabaseRepository'
 import { formatAgo } from '@/lib/format'
+import type { TeamDetails, TeamRef } from './team'
 
 export interface SyncApi {
-  /** The venue account this device is signed in to. */
+  /** The person signed in on this device. */
   email: string
+  team: TeamRef
   status: SyncStatus
   syncNow: () => void
   /** For when the session was lost. Resolves to an error message, or null once signed in. */
   signInAgain: (password: string) => Promise<string | null>
-  /** Signs this device out and forgets its copy of the venue, unsent records included. */
+  /** Signs this device out and forgets its copy of the team's records, unsent ones included. */
   signOut: () => Promise<void>
+  /** The code others join with, and whether this person may change it. Needs a connection. */
+  teamDetails: () => Promise<TeamDetails>
+  /** Replaces the join code, so the old one stops working. Owners only. */
+  newJoinCode: () => Promise<string>
+  /** Takes this account out of the team and back to choosing one. */
+  leaveTeam: () => Promise<void>
 }
 
 export const SyncContext = createContext<SyncApi | null>(null)
@@ -30,7 +38,12 @@ export function authErrorMessage(error: AuthError): string {
     case 'email_not_confirmed':
       return 'Confirm your email first. The link is in your inbox.'
     case 'user_already_exists':
-      return 'There’s already an account for that email. Sign in instead.'
+    case 'email_exists':
+      return 'That email is already taken. Sign in instead.'
+    case 'same_password':
+      return 'That’s the password you have now. Choose a different one.'
+    case 'weak_password':
+      return 'Choose a longer password: at least 6 characters.'
     case 'over_request_rate_limit':
     case 'over_email_send_rate_limit':
       return 'Too many attempts. Wait a minute and try again.'

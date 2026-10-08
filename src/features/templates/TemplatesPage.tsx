@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Check, LayoutTemplate, Plus, Search, Settings } from 'lucide-react'
 import { useStore } from '@/data/store'
-import { TEMPLATE_GROUPS } from '@/data/taskQuestions'
+import { describeSource, resolveQuestions, TEMPLATE_GROUPS } from '@/data/taskQuestions'
 import { createTemplateLibrary } from '@/data/taskTemplateLibrary'
 import type { TaskTemplate } from '@/data/types'
 import { questionSummary } from '@/lib/taskAnswers'
@@ -18,8 +18,9 @@ import { MANAGE_TEMPLATES_PATH } from './editing'
 
 const ADDED = 'Added'
 
-function questionCount(template: TaskTemplate): number {
-  return template.tasks.reduce((total, task) => total + task.questions.length, 0)
+/** As tasks would ask them now, so a fridge check counts one reading per fridge. */
+function questionCount(template: TaskTemplate, data: Parameters<typeof resolveQuestions>[1]): number {
+  return template.tasks.reduce((total, task) => total + resolveQuestions(task.questions, data).length, 0)
 }
 
 /**
@@ -182,7 +183,8 @@ function LibraryRow({
   onPreview: () => void
   onAdd: () => void
 }) {
-  const questions = questionCount(template)
+  const { data } = useStore()
+  const questions = questionCount(template, data)
   return (
     <li className="hover:bg-surface-muted/60 flex items-center gap-2 pr-3 transition-colors sm:pr-4">
       <button type="button" onClick={onPreview} className="flex min-w-0 flex-1 items-center gap-3 py-3 pl-4 text-left sm:pl-5">
@@ -228,6 +230,7 @@ function TemplatePreview({
   onAdd: () => void
   onClose: () => void
 }) {
+  const { data } = useStore()
   return (
     <Modal
       open
@@ -268,7 +271,9 @@ function TemplatePreview({
               {task.questions.map((question) => (
                 <li key={question.id} className="px-3 py-2">
                   <p className="text-ink text-[13px]">{question.label}</p>
-                  <p className="text-ink-muted text-xs">{questionSummary(question)}</p>
+                  <p className="text-ink-muted text-xs">
+                    {question.source ? describeSource(question.source, data) : questionSummary(question)}
+                  </p>
                 </li>
               ))}
             </ol>

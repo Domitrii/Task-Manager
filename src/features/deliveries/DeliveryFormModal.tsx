@@ -49,33 +49,52 @@ function emptyLine(category: DeliveryLineCategory = 'chilled'): DeliveryLine {
   }
 }
 
+/**
+ * The same order as a past delivery: supplier, products, quantities and units.
+ * Everything that has to be checked on the day (temperatures, packaging,
+ * dates, accept or reject) starts fresh, so a repeat can't skip a check.
+ */
+function repeatLine(line: DeliveryLine): DeliveryLine {
+  return {
+    ...emptyLine(line.category),
+    product: line.product,
+    quantity: line.quantity,
+    unit: line.unit,
+  }
+}
+
 export function DeliveryFormModal({
   open,
   onClose,
   existing,
+  repeatOf,
 }: {
   open: boolean
   onClose: () => void
+  /** Edits this delivery. */
   existing?: Delivery
+  /** Records a new delivery pre-filled from this one. */
+  repeatOf?: Delivery
 }) {
   const { data, activeStaffId, saveDelivery } = useStore()
   const toast = useToast()
 
   // Mounted only while open, so the form seeds itself once from `existing`
-  // (edit) or from sensible defaults (new) and needs no reset effect.
-  const [supplierId, setSupplierId] = useState(
-    () => existing?.supplierId ?? data.suppliers.find((supplier) => supplier.active)?.id ?? '',
-  )
+  // (edit), `repeatOf` (repeat) or sensible defaults (new) and needs no reset effect.
+  const [supplierId, setSupplierId] = useState(() => {
+    const repeated = data.suppliers.find((supplier) => supplier.id === repeatOf?.supplierId && supplier.active)
+    return existing?.supplierId ?? repeated?.id ?? data.suppliers.find((supplier) => supplier.active)?.id ?? ''
+  })
   const [receivedAt, setReceivedAt] = useState(() =>
     toLocalInputValue(existing ? new Date(existing.receivedAt) : new Date()),
   )
   const [checkedBy, setCheckedBy] = useState(existing?.checkedBy ?? activeStaffId)
   const [deliveryNote, setDeliveryNote] = useState(existing?.deliveryNote ?? '')
-  const [driverName, setDriverName] = useState(existing?.driverName ?? '')
+  const [driverName, setDriverName] = useState(existing?.driverName ?? repeatOf?.driverName ?? '')
   const [vehicleTempOk, setVehicleTempOk] = useState(existing?.vehicleTempOk ?? true)
   const [notes, setNotes] = useState(existing?.notes ?? '')
   const [lines, setLines] = useState<DeliveryLine[]>(
-    () => existing?.lines.map((line) => ({ ...line })) ?? [emptyLine()],
+    () => existing?.lines.map((line) => ({ ...line })) ?? repeatOf?.lines.map(repeatLine) ?? [emptyLine()],
   )
   const [submitted, setSubmitted] = useState(false)
 
@@ -147,8 +166,12 @@ export function DeliveryFormModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={existing ? 'Edit delivery' : 'Record a delivery'}
-      description="Check every line on arrival. Anything out of limits is flagged for rejection."
+      title={existing ? 'Edit delivery' : repeatOf ? 'Repeat a delivery' : 'Record a delivery'}
+      description={
+        repeatOf && !existing
+          ? 'Same products and quantities as last time. Probe and check every line again before you record it.'
+          : 'Check every line on arrival. Anything out of limits is flagged for rejection.'
+      }
       size="xl"
       footer={
         <>

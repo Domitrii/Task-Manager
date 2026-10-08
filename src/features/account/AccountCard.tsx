@@ -107,7 +107,7 @@ function SignInAgainModal({ sync, onClose }: { sync: SyncApi; onClose: () => voi
   )
 }
 
-function SignOutModal({ sync, onClose }: { sync: SyncApi; onClose: () => void }) {
+export function SignOutModal({ sync, onClose }: { sync: SyncApi; onClose: () => void }) {
   const [busy, setBusy] = useState(false)
   const { pending } = sync.status
 
@@ -139,7 +139,7 @@ function SignOutModal({ sync, onClose }: { sync: SyncApi; onClose: () => void })
       <p className="text-ink-muted text-[13px]">
         {pending > 0
           ? `${pending} ${pending === 1 ? 'record hasn’t' : 'records haven’t'} synced yet. Signing out now deletes ${pending === 1 ? 'it' : 'them'} for good. Connect to the internet and wait for sync to finish to keep ${pending === 1 ? 'it' : 'them'}.`
-          : 'The venue’s records stay safe in your account. This device will need the email and password to open it again.'}
+          : 'The team’s records stay safe. You’ll need your email and password to sign in on this device again.'}
       </p>
     </Modal>
   )

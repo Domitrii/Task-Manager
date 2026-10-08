@@ -272,6 +272,19 @@ export interface QuestionOption {
   action: OptionAction
 }
 
+/**
+ * Team data a template question is filled from. It's resolved each time a task
+ * is created from the template, so the task always matches the team's current
+ * equipment, staff and suppliers, not whatever they were when it was added.
+ */
+export type QuestionSource =
+  /** A number question asked once for each active item in these categories, with that item's own safe range. */
+  | { kind: 'equipment'; categories: MonitoredCategory[] }
+  /** An options question whose options are the team's active staff. */
+  | { kind: 'staff' }
+  /** An options question whose options are the team's active suppliers. */
+  | { kind: 'suppliers' }
+
 export interface TaskQuestion {
   id: ID
   label: string
@@ -291,6 +304,10 @@ export interface TaskQuestion {
   /** `number` only: answers outside this inclusive range are exceptions. */
   min?: number
   max?: number
+  /** Templates only. With no matching team data, the question is asked as written. */
+  source?: QuestionSource
+  /** On a task, the piece of equipment a reading made from `source` is for. */
+  itemId?: ID
 }
 
 export interface TaskAnswer {

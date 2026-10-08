@@ -77,6 +77,15 @@ export class LocalStorageRepository implements DataRepository {
     await this.save(data)
     return data
   }
+
+  /** Forgets everything stored on this device. */
+  async clear(): Promise<void> {
+    try {
+      localStorage.removeItem(this.key)
+    } catch {
+      // Storage unavailable: there is nothing to forget.
+    }
+  }
 }
 
 /** In-memory repository, useful for tests. Starts empty unless given data. */

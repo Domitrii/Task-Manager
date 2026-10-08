@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { AlertTriangle, Ban, CalendarClock, Package, Plus, Truck } from 'lucide-react'
+import { AlertTriangle, Ban, CalendarClock, Package, Plus, Repeat, Truck } from 'lucide-react'
 import {
   selectDeliveriesForDay,
   selectExpiringStock,
@@ -15,7 +15,7 @@ import { useNow } from '@/lib/useNow'
 import { cn } from '@/lib/utils'
 import { Avatar } from '@/components/ui/Avatar'
 import { Badge } from '@/components/ui/Badge'
-import { Button } from '@/components/ui/Button'
+import { Button, IconButton } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Select, TextInput } from '@/components/ui/Field'
@@ -38,6 +38,7 @@ export function DeliveriesPage() {
   const [supplierFilter, setSupplierFilter] = useState('all')
   const [query, setQuery] = useState('')
   const [editing, setEditing] = useState<Delivery | undefined>(undefined)
+  const [repeating, setRepeating] = useState<Delivery | undefined>(undefined)
   const [formOpen, setFormOpen] = useState(false)
 
   // The opened delivery lives in the URL rather than in state, so a dashboard
@@ -209,6 +210,9 @@ export function DeliveriesPage() {
                     <Th>Temperatures</Th>
                     <Th>Status</Th>
                     <Th>Checked by</Th>
+                    <Th>
+                      <span className="sr-only">Repeat</span>
+                    </Th>
                   </tr>
                 </thead>
                 <tbody>
@@ -272,6 +276,20 @@ export function DeliveriesPage() {
                             </span>
                           </span>
                         </Td>
+                        <Td className="w-0 py-2 pr-3 pl-0">
+                          <IconButton
+                            label={`Repeat this delivery from ${supplier?.name ?? 'this supplier'}`}
+                            size="sm"
+                            onClick={(event) => {
+                              // The row itself opens the delivery.
+                              event.stopPropagation()
+                              setRepeating(delivery)
+                              setFormOpen(true)
+                            }}
+                          >
+                            <Repeat className="size-4" />
+                          </IconButton>
+                        </Td>
                       </Tr>
                     )
                   })}
@@ -290,15 +308,22 @@ export function DeliveriesPage() {
           setEditing(delivery)
           setFormOpen(true)
         }}
+        onRepeat={(delivery) => {
+          setSelectedId(undefined)
+          setRepeating(delivery)
+          setFormOpen(true)
+        }}
       />
-      {/* Mounted only while open so the form seeds fresh from `editing`. */}
+      {/* Mounted only while open so the form seeds fresh from `editing` or `repeating`. */}
       {formOpen ? (
         <DeliveryFormModal
           open
           existing={editing}
+          repeatOf={repeating}
           onClose={() => {
             setFormOpen(false)
             setEditing(undefined)
+            setRepeating(undefined)
           }}
         />
       ) : null}

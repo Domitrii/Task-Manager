@@ -4,7 +4,7 @@
  * Staff never wait on the network. Every save lands in IndexedDB first, so
  * recording works with no signal at all; each save is diffed into per-record
  * changes and queued in an outbox, which is pushed whenever the device is
- * online and signed in. Changes from the venue's other devices are pulled — on
+ * online and signed in. Changes from the team's other devices are pulled — on
  * a Realtime nudge, on reconnecting, on coming back to the tab and on a slow
  * poll — and handed to the store through `subscribe`.
  *
@@ -27,7 +27,7 @@ import {
   type RecordChange,
   type SortKeys,
 } from './records'
-import type { DataRepository, RemoteListener } from './repository'
+import type { DataRepository, LocalStorageRepository, RemoteListener } from './repository'
 import { createSeedData } from './seed'
 import type { AppData } from './types'
 
@@ -92,10 +92,18 @@ function idb() {
 let channels = 0
 
 export class SupabaseRepository implements DataRepository {
-  readonly venueId: string
+  readonly teamId: string
+  /** The person signed in on this device; syncing pauses if anyone else is. */
+  private readonly userId: string
   private readonly client: SupabaseClient
-  /** Where this device kept records before sync; adopted by a venue that has none yet. */
-  private readonly legacy: DataRepository | null
+  /**
+   * Where this device kept records before sync. The first team this device
+   * opens takes them if it has none of its own; either way they are then
+   * deleted, so no later account on this device inherits them.
+   */
+  private readonly legacy: LocalStorageRepository | null
+  /** The records just loaded came from `legacy`; it's cleared once they're queued for upload. */
+  private adopting = false
 
   /** The data as last saved or merged: what the next save is diffed against. */
   private snapshot: AppData | null = null
@@ -120,9 +128,10 @@ export class SupabaseRepository implements DataRepository {
   private readonly statusListeners = new Set<() => void>()
   private readonly remoteListeners = new Set<RemoteListener>()
 
-  constructor(client: SupabaseClient, venueId: string, legacy: DataRepository | null = null) {
+  constructor(client: SupabaseClient, teamId: string, userId: string, legacy: LocalStorageRepository | null = null) {
     this.client = client
-    this.venueId = venueId
+    this.teamId = teamId
+    this.userId = userId
     this.legacy = legacy
   }
 
@@ -149,6 +158,10 @@ export class SupabaseRepository implements DataRepository {
       )
       await this.writeCache()
     })
+    if (this.adopting) {
+      this.adopting = false
+      await this.legacy?.clear()
+    }
     // A new venue's first save (setup, demo data or adopted local records) is what starts it syncing.
     if (!this.loaded) this.ready()
     else this.requestSync(PUSH_DELAY_MS)
@@ -199,10 +212,10 @@ export class SupabaseRepository implements DataRepository {
     // Realtime is only a doorbell: any change to the venue triggers a pull, and
     // so does (re)connecting, to catch up on whatever happened meanwhile.
     this.channel = this.client
-      .channel(`records:${this.venueId}:${++channels}`)
+      .channel(`records:${this.teamId}:${++channels}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: TABLE, filter: `venue_id=eq.${this.venueId}` },
+        { event: '*', schema: 'public', table: TABLE, filter: `team_id=eq.${this.teamId}` },
         () => this.requestSync(PUSH_DELAY_MS),
       )
       .subscribe((state) => {
@@ -226,7 +239,7 @@ export class SupabaseRepository implements DataRepository {
     this.channel = null
   }
 
-  /** Forgets this venue on this device, unsent changes included. For signing out. */
+  /** Forgets this team's records on this device, unsent changes included. For signing out or leaving. */
   async clearLocal(): Promise<void> {
     this.stop()
     this.outbox.clear()
@@ -236,7 +249,8 @@ export class SupabaseRepository implements DataRepository {
         queued.map((change) => this.outboxKey(change)),
         idb().outbox,
       )
-      await del(this.venueId, idb().cache)
+      await del(this.teamId, idb().cache)
+      await this.legacy?.clear()
     })
   }
 
@@ -246,7 +260,7 @@ export class SupabaseRepository implements DataRepository {
     let cached: CachedVenue | undefined
     let queued: RecordChange[] = []
     try {
-      cached = await get<CachedVenue>(this.venueId, idb().cache)
+      cached = await get<CachedVenue>(this.teamId, idb().cache)
       queued = await this.readOutbox()
     } catch {
       // Storage is blocked (some private modes): start from the server instead.
@@ -261,6 +275,7 @@ export class SupabaseRepository implements DataRepository {
       const data = withMissingLists(cached.data)
       this.snapshot = queued.length > 0 ? applyChanges(data, queued) : data
       trackSortKeys(this.sortKeys, queued)
+      await this.legacy?.clear()
       this.ready()
       return this.snapshot
     }
@@ -274,6 +289,7 @@ export class SupabaseRepository implements DataRepository {
       this.sortKeys = built.sortKeys
       this.cursor = newest(rows, null)
       await this.persist(() => this.writeCache())
+      await this.legacy?.clear()
       this.ready()
       return this.snapshot
     }
@@ -281,7 +297,9 @@ export class SupabaseRepository implements DataRepository {
     // A venue with nothing in it yet. Records this device kept before it synced
     // are carried over: with no snapshot to diff against, the store's first
     // save queues every one of them for upload. Syncing starts with that save.
-    return (await this.legacy?.load()) ?? null
+    const adopted = (await this.legacy?.load()) ?? null
+    this.adopting = adopted !== null
+    return adopted
   }
 
   /** Every live record of the venue, however long it takes to reach the server. */
@@ -365,7 +383,7 @@ export class SupabaseRepository implements DataRepository {
   private async blocked(): Promise<'offline' | 'signed-out' | null> {
     if (!navigator.onLine) return 'offline'
     const { data, error } = await this.client.auth.getSession()
-    if (data.session?.user.id === this.venueId) return null
+    if (data.session?.user.id === this.userId) return null
     // A token refresh that failed for want of a network isn't a sign-out.
     return error && isAuthRetryableFetchError(error) ? 'offline' : 'signed-out'
   }
@@ -388,14 +406,14 @@ export class SupabaseRepository implements DataRepository {
       const batch = [...this.outbox.values()].slice(0, PUSH_BATCH)
       const { error } = await this.client.from(TABLE).upsert(
         batch.map((change) => ({
-          venue_id: this.venueId,
+          team_id: this.teamId,
           collection: change.collection,
           id: change.id,
           data: change.data,
           deleted: change.data === null,
           sort: change.sort,
         })),
-        { onConflict: 'venue_id,collection,id' },
+        { onConflict: 'team_id,collection,id' },
       )
       if (error) throw error
 
@@ -437,7 +455,7 @@ export class SupabaseRepository implements DataRepository {
     // Paged until an empty page rather than a short one: a project can cap rows
     // per request below PAGE_SIZE, and a short page would then look like the end.
     for (;;) {
-      let query = this.client.from(TABLE).select(COLUMNS).eq('venue_id', this.venueId)
+      let query = this.client.from(TABLE).select(COLUMNS).eq('team_id', this.teamId)
       if (since) query = query.gt('updated_at', since)
       if (liveOnly) query = query.eq('deleted', false)
       const { data, error } = await query
@@ -487,15 +505,15 @@ export class SupabaseRepository implements DataRepository {
       cursor: this.cursor,
       lastSyncedAt: this.status.lastSyncedAt,
     }
-    return set(this.venueId, cached, idb().cache)
+    return set(this.teamId, cached, idb().cache)
   }
 
   private outboxKey(change: RecordChange): string {
-    return `${this.venueId}|${recordKey(change)}`
+    return `${this.teamId}|${recordKey(change)}`
   }
 
   private async readOutbox(): Promise<RecordChange[]> {
-    const prefix = `${this.venueId}|`
+    const prefix = `${this.teamId}|`
     const stored = await entries<string, RecordChange>(idb().outbox)
     return stored.filter(([key]) => key.startsWith(prefix)).map(([, change]) => change)
   }

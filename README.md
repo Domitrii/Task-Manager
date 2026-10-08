@@ -23,12 +23,12 @@ Either can be redone later from **Settings → Data**.
 
 ### Connecting Supabase
 
-Without Supabase keys the app keeps everything on the device it runs on. With them, each venue
-is an account, every device signed in to it shares the same records, and recording carries on
-offline (see *Sync and offline* below).
+Without Supabase keys the app keeps everything on the device it runs on. With them, everyone
+signs in with their own account and belongs to a team. The team owns the records, every device
+signed in to it shares them, and recording carries on offline (see *Sync and offline* below).
 
-1. In the Supabase dashboard, open **SQL Editor** and run
-   `supabase/migrations/20260930000000_records.sql` (or `supabase db push` with the CLI).
+1. In the Supabase dashboard, open **SQL Editor** and run each file in `supabase/migrations/` in
+   order (or `supabase db push` with the CLI).
 2. Copy `.env.example` to `.env` and fill in the project URL and the **publishable** key from
    **Settings → API**. The secret key is never needed by this app and must not go in a `VITE_`
    variable, because those are bundled into the browser build.
@@ -36,8 +36,11 @@ offline (see *Sync and offline* below).
    add `http://localhost:5173` as a redirect URL, so sign-up confirmation links come back to the app.
 4. On Vercel, add the same two `VITE_` variables to the project and redeploy.
 
-The first device to sign in to an empty venue offers setup as before. If that device already has
-records from before sync, they are uploaded into the account instead.
+After signing in, someone without a team either creates one or joins with its 8-character code,
+which everyone in the team can find under **Settings → Team** (the owner can replace it). A new
+team offers setup as before; if the device already has records from before sync, they are
+uploaded into the team instead. Accounts from before teams became teams of their own, with the
+same records.
 
 ## Stack
 
@@ -74,7 +77,7 @@ interface DataRepository {
 }
 ```
 
-`SupabaseRepository` syncs a venue between devices (next section); `LocalStorageRepository`
+`SupabaseRepository` syncs a team's records between devices (next section); `LocalStorageRepository`
 keeps everything on one device and is used when no Supabase keys are set. `main.tsx` picks one,
 and no screen knows which. That is also the seam integrations arrive through:
 
@@ -113,11 +116,13 @@ the server, not the device, so a phone with the wrong clock can't hide its chang
 keeps in entry order (equipment, staff, suppliers) carry a sort key, so a new device shows them in
 the same order.
 
-A venue is one Supabase account and its devices share the login, matching how the app already
-works: staff pick who they are from the top bar. Row-level security limits each account to its own
-records. A device remembers its venue after the first sign-in and opens straight into it,
-including offline, until it is signed out from **Settings → Data**. Signing out warns before
-discarding anything that hasn't synced.
+Each person has their own account and belongs to one team; records belong to the team.
+Row-level security limits each account to its team's records, and creating, joining, leaving and
+changing the code go through database functions that check the code and the person's role. Staff
+still pick who is recording from the top bar, so a shared kitchen tablet can stay signed in to one
+account. A device remembers its account and team after the first sign-in and opens straight into
+them, including offline, until it is signed out from the profile menu or **Settings → Team**.
+Signing out warns before discarding anything that hasn't synced.
 
 The sync state shows in the top bar and in **Settings → Data**. It is deliberately neutral:
 status colours are kept for compliance, and an offline device is working as intended.

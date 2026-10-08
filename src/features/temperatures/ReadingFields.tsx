@@ -192,35 +192,47 @@ export function CorrectiveActionField({
   className?: string
 }) {
   function addQuickAction(text: string) {
-    if (value.includes(text)) return
     const trimmed = value.trim()
     onChange(trimmed ? `${trimmed.replace(/[.\s]*$/, '')}. ${text}.` : `${text}.`)
+  }
+
+  /** Takes the action's sentence back out, leaving whatever else was written. */
+  function removeQuickAction(text: string) {
+    const at = value.indexOf(text)
+    const before = value.slice(0, at).trimEnd()
+    const after = value.slice(at + text.length).replace(/^\.?\s*/, '')
+    if (!before || !after) onChange(before || after)
+    else onChange(/[.!?]$/.test(before) ? `${before} ${after}` : `${before}. ${after}`)
   }
 
   return (
     <Field
       label="What did you do about it?"
       required
-      hint="Tap any that apply, or write your own. This is what an inspector reads."
+      hint="Tap any that apply (tap again to remove), or write your own. This is what an inspector reads."
       error={error}
       htmlFor={id}
     >
       <div className="flex flex-wrap gap-1.5">
-        {QUICK_ACTIONS[category].map((action) => (
-          <button
-            key={action}
-            type="button"
-            onClick={() => addQuickAction(action)}
-            className={cn(
-              'rounded-full border px-3 py-1.5 text-[13px] font-medium transition-colors',
-              value.includes(action)
-                ? 'border-brand-600 bg-brand-50 text-brand-800 dark:bg-brand-500/12 dark:text-brand-200'
-                : 'border-line-default text-ink hover:border-line-strong',
-            )}
-          >
-            {action}
-          </button>
-        ))}
+        {QUICK_ACTIONS[category].map((action) => {
+          const selected = value.includes(action)
+          return (
+            <button
+              key={action}
+              type="button"
+              aria-pressed={selected}
+              onClick={() => (selected ? removeQuickAction(action) : addQuickAction(action))}
+              className={cn(
+                'rounded-full border px-3 py-1.5 text-[13px] font-medium transition-colors',
+                selected
+                  ? 'border-brand-600 bg-brand-50 text-brand-800 dark:bg-brand-500/12 dark:text-brand-200'
+                  : 'border-line-default text-ink hover:border-line-strong',
+              )}
+            >
+              {action}
+            </button>
+          )
+        })}
       </div>
       <Textarea
         id={id}

@@ -8,7 +8,7 @@ import { useNow } from '@/lib/useNow'
 import { ChecklistRunModal } from '@/features/checklists/ChecklistRunModal'
 import { RaiseIssueModal } from '@/features/checklists/FoodSafetyPage'
 import { DeliveryFormModal } from '@/features/deliveries/DeliveryFormModal'
-import { NewTaskModal } from '@/features/tasks/TasksPage'
+import { NewTaskModal } from '@/features/tasks/NewTaskModal'
 import { RecordTemperatureModal } from '@/features/temperatures/RecordTemperatureModal'
 import { BottomNav, MoreSheet } from './BottomNav'
 import { CommandPalette } from './CommandPalette'
@@ -102,7 +102,7 @@ export function AppShell() {
       {sheet?.type === 'delivery' ? <DeliveryFormModal open onClose={close} /> : null}
       {sheet?.type === 'checklist' ? <ChecklistSheet templateId={sheet.templateId} onClose={close} /> : null}
       {sheet?.type === 'issue' ? <RaiseIssueModal open onClose={close} /> : null}
-      {sheet?.type === 'task' ? <NewTaskModal open onClose={close} /> : null}
+      {sheet?.type === 'task' ? <NewTaskModal onClose={close} /> : null}
     </QuickEntryContext>
   )
 }

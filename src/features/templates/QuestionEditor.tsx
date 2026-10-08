@@ -1,7 +1,17 @@
 import { useState } from 'react'
-import { ArrowDown, ArrowUp, ChevronDown, Copy, Ellipsis, Plus, Trash2, TriangleAlert } from 'lucide-react'
-import { newOption, newQuestion } from '@/data/taskQuestions'
-import type { OptionAction, QuestionOption, QuestionType, TaskQuestion } from '@/data/types'
+import { Link } from 'react-router-dom'
+import { ArrowDown, ArrowUp, ChevronDown, Copy, Ellipsis, Link2, Plus, Trash2, TriangleAlert } from 'lucide-react'
+import { useStore } from '@/data/store'
+import {
+  ANSWER_PRESETS,
+  describeSource,
+  matchingPreset,
+  newOption,
+  newQuestion,
+  presetAnswers,
+  presetQuestion,
+} from '@/data/taskQuestions'
+import type { OptionAction, QuestionOption, QuestionSource, QuestionType, TaskQuestion } from '@/data/types'
 import { questionSummary, questionTypeLabel } from '@/lib/taskAnswers'
 import { cn } from '@/lib/utils'
 import { Button, IconButton } from '@/components/ui/Button'
@@ -46,8 +56,8 @@ export function QuestionListEditor({
     onChange(questions.map((entry, position) => (position === index ? question : entry)))
   }
 
-  function add(type: QuestionType) {
-    const question = newQuestion(type)
+  function add(type: QuestionType, preset?: string) {
+    const question = preset ? presetQuestion(preset) : newQuestion(type)
     onChange([...questions, question])
     onExpandedChange(new Set(expanded).add(question.id))
     // After the new card renders.
@@ -111,19 +121,33 @@ export function QuestionListEditor({
             </Button>
           )}
         >
-          {({ close }) =>
-            TYPES.filter((type) => type !== 'options').map((type) => (
-              <MenuItem
-                key={type}
-                onClick={() => {
-                  add(type)
-                  close()
-                }}
-              >
-                {questionTypeLabel(type)}
-              </MenuItem>
-            ))
-          }
+          {({ close }) => (
+            <>
+              {ANSWER_PRESETS.filter((preset) => preset.key !== 'yes-no').map((preset) => (
+                <MenuItem
+                  key={preset.key}
+                  onClick={() => {
+                    add('options', preset.key)
+                    close()
+                  }}
+                >
+                  {preset.label}
+                </MenuItem>
+              ))}
+              <MenuDivider />
+              {TYPES.filter((type) => type !== 'options').map((type) => (
+                <MenuItem
+                  key={type}
+                  onClick={() => {
+                    add(type)
+                    close()
+                  }}
+                >
+                  {questionTypeLabel(type)}
+                </MenuItem>
+              ))}
+            </>
+          )}
         </Menu>
       </div>
     </div>
@@ -153,6 +177,7 @@ function QuestionCard({
   onDuplicate: () => void
   onDelete: () => void
 }) {
+  const { data } = useStore()
   const set = (changes: Partial<TaskQuestion>) => onChange({ ...question, ...changes })
 
   function changeType(type: QuestionType) {
@@ -180,7 +205,14 @@ function QuestionCard({
             <span className={cn('block text-sm font-medium', question.label ? 'text-ink' : 'text-ink-subtle italic')}>
               {question.label || 'Untitled question'}
             </span>
-            {!open ? <span className="text-ink-muted mt-0.5 block truncate text-xs">{questionSummary(question)}</span> : null}
+            {!open ? (
+              <span className="text-ink-muted mt-0.5 flex items-center gap-1 truncate text-xs">
+                {question.source ? <Link2 className="text-brand-600 dark:text-brand-300 size-3.5 shrink-0" /> : null}
+                <span className="truncate">
+                  {question.source ? describeSource(question.source, data) : questionSummary(question)}
+                </span>
+              </span>
+            ) : null}
           </span>
           <ChevronDown className={cn('text-ink-subtle mt-0.5 size-4 shrink-0 transition-transform', open && 'rotate-180')} />
         </button>
@@ -217,6 +249,9 @@ function QuestionCard({
 
       {open ? (
         <div className="border-line space-y-4 border-t px-3 py-4 sm:px-4">
+          {question.source ? (
+            <SourceNotice source={question.source} onUnlink={() => set({ source: undefined })} />
+          ) : null}
           <div className="grid gap-4 sm:grid-cols-[1fr_12rem]">
             <Field label="Question" htmlFor={`${question.id}-label`}>
               <TextInput
@@ -264,6 +299,37 @@ function QuestionCard({
   )
 }
 
+const SOURCE_SETTINGS: Record<QuestionSource['kind'], { tab: string; label: string }> = {
+  equipment: { tab: 'equipment', label: 'Settings → Equipment' },
+  staff: { tab: 'staff', label: 'Settings → Team' },
+  suppliers: { tab: 'suppliers', label: 'Settings → Suppliers' },
+}
+
+/** What a linked question is filled from when a task is created, and a way to make it an ordinary question. */
+function SourceNotice({ source, onUnlink }: { source: QuestionSource; onUnlink: () => void }) {
+  const { data } = useStore()
+  const settings = SOURCE_SETTINGS[source.kind]
+  return (
+    <div className="bg-brand-50 border-brand-600/20 dark:bg-brand-500/10 flex items-start gap-3 rounded-lg border p-3">
+      <Link2 className="text-brand-600 dark:text-brand-300 mt-0.5 size-4 shrink-0" />
+      <div className="min-w-0 flex-1 space-y-1">
+        <p className="text-ink text-[13px] font-medium">Filled from your team’s data</p>
+        <p className="text-ink-muted text-[13px]">
+          {describeSource(source, data)} Each new task uses what’s in{' '}
+          <Link to={`/settings?tab=${settings.tab}`} className="text-brand-700 dark:text-brand-300 font-semibold hover:underline">
+            {settings.label}
+          </Link>{' '}
+          at the time.
+          {source.kind === 'equipment' ? ' The settings below are only used while none is set up.' : ''}
+        </p>
+      </div>
+      <Button size="sm" variant="ghost" onClick={onUnlink}>
+        Unlink
+      </Button>
+    </div>
+  )
+}
+
 function SettingRow({
   label,
   description,
@@ -299,6 +365,33 @@ function OptionsSettings({ question, onChange }: { question: TaskQuestion; onCha
         checked={question.scored}
         onChange={(scored) => onChange({ ...question, scored })}
       />
+
+      <div>
+        <p className="text-ink mb-2 text-sm font-medium">Answer with</p>
+        <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Answer with">
+          {ANSWER_PRESETS.map((preset) => {
+            const chosen = matchingPreset(question) === preset.key
+            return (
+              <button
+                key={preset.key}
+                type="button"
+                role="radio"
+                aria-checked={chosen}
+                onClick={() => onChange({ ...question, ...presetAnswers(preset.key) })}
+                className={cn(
+                  'rounded-full border px-3 py-1.5 text-[13px] font-medium transition-colors',
+                  chosen
+                    ? 'border-brand-600 bg-brand-50 text-brand-800 dark:bg-brand-500/12 dark:text-brand-200'
+                    : 'border-line-default text-ink hover:border-line-strong',
+                )}
+              >
+                {preset.label}
+              </button>
+            )
+          })}
+        </div>
+        <p className="text-ink-muted mt-1.5 text-xs">Replaces the options below. You can still change each one after.</p>
+      </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-ink text-sm font-medium">Display options as</p>

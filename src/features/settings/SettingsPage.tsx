@@ -24,6 +24,7 @@ import { Tabs } from '@/components/ui/Tabs'
 import { useToast } from '@/components/ui/Toast'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { AccountCard } from '@/features/account/AccountCard'
+import { TeamCard } from '@/features/account/TeamCard'
 import { useSync } from '@/features/account/sync'
 import { ShowQrButton } from '@/features/qr/ShowQrButton'
 import { ManageTemplates } from '@/features/templates/ManageTemplates'
@@ -452,48 +453,51 @@ function StaffTab() {
   const [creating, setCreating] = useState(false)
 
   return (
-    <Card className="overflow-hidden">
-      <CardHeader
-        title="Team"
-        description="Anyone who records a check, signs off a checklist or receives a delivery"
-        action={
-          <Button variant="primary" size="sm" onClick={() => setCreating(true)} className="gap-1.5">
-            <Plus className="size-4" />
-            Add team member
-          </Button>
-        }
-      />
-      <ul className="divide-line divide-y">
-        {data.staff.map((person) => (
-          <li key={person.id} className="flex items-center gap-3 px-4 py-3 sm:px-5">
-            <Avatar person={person} />
-            <div className="min-w-0 flex-1">
-              <p className="text-ink text-sm font-medium">{person.name}</p>
-              <p className="text-ink-muted text-xs">{titleCase(person.role)}</p>
-            </div>
-            {person.active ? <Badge tone="pass">Active</Badge> : <Badge tone="neutral">Inactive</Badge>}
-            <Toggle
-              label={`Toggle ${person.name}`}
-              checked={person.active}
-              onChange={(value) => saveStaff({ ...person, active: value })}
-            />
-            <IconButton label="Edit team member" size="sm" onClick={() => setEditing(person)}>
-              <Pencil className="size-4" />
-            </IconButton>
-          </li>
-        ))}
-      </ul>
-
-      {editing || creating ? (
-        <StaffModal
-          member={editing}
-          onClose={() => {
-            setEditing(undefined)
-            setCreating(false)
-          }}
+    <div className="space-y-5">
+      <TeamCard />
+      <Card className="overflow-hidden">
+        <CardHeader
+          title="Team members"
+          description="Anyone who records a check, signs off a checklist or receives a delivery"
+          action={
+            <Button variant="primary" size="sm" onClick={() => setCreating(true)} className="gap-1.5">
+              <Plus className="size-4" />
+              Add team member
+            </Button>
+          }
         />
-      ) : null}
-    </Card>
+        <ul className="divide-line divide-y">
+          {data.staff.map((person) => (
+            <li key={person.id} className="flex items-center gap-3 px-4 py-3 sm:px-5">
+              <Avatar person={person} />
+              <div className="min-w-0 flex-1">
+                <p className="text-ink text-sm font-medium">{person.name}</p>
+                <p className="text-ink-muted text-xs">{titleCase(person.role)}</p>
+              </div>
+              {person.active ? <Badge tone="pass">Active</Badge> : <Badge tone="neutral">Inactive</Badge>}
+              <Toggle
+                label={`Toggle ${person.name}`}
+                checked={person.active}
+                onChange={(value) => saveStaff({ ...person, active: value })}
+              />
+              <IconButton label="Edit team member" size="sm" onClick={() => setEditing(person)}>
+                <Pencil className="size-4" />
+              </IconButton>
+            </li>
+          ))}
+        </ul>
+
+        {editing || creating ? (
+          <StaffModal
+            member={editing}
+            onClose={() => {
+              setEditing(undefined)
+              setCreating(false)
+            }}
+          />
+        ) : null}
+      </Card>
+    </div>
   )
 }
 
