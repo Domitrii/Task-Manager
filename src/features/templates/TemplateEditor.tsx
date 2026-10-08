@@ -10,10 +10,9 @@ import {
   LayoutTemplate,
   Plus,
   Trash2,
-  UserPlus,
 } from 'lucide-react'
 import { useStore } from '@/data/store'
-import { newTemplateTask, TEMPLATE_GROUPS } from '@/data/taskTemplateLibrary'
+import { newTemplateTask, TEMPLATE_GROUPS } from '@/data/taskQuestions'
 import type { TaskCategory, TaskPriority, TaskTemplate, TemplateTask } from '@/data/types'
 import { questionSummary } from '@/lib/taskAnswers'
 import { cn, createId, titleCase } from '@/lib/utils'
@@ -24,8 +23,7 @@ import { Field, Select, TextInput, Textarea } from '@/components/ui/Field'
 import { Menu, MenuDivider, MenuItem } from '@/components/ui/Menu'
 import { Modal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
-import { AssignTemplateModal } from './AssignTemplateModal'
-import { copyQuestion, move, questionAnchor } from './editing'
+import { copyQuestion, MANAGE_TEMPLATES_PATH, move, questionAnchor, templatePath } from './editing'
 import { QuestionListEditor } from './QuestionEditor'
 
 const CATEGORIES: TaskCategory[] = ['compliance', 'maintenance', 'prep', 'admin', 'training']
@@ -79,7 +77,7 @@ function useTemplateDraft(stored: TaskTemplate) {
   return { draft, update, discard }
 }
 
-/** `/templates/:templateId/*` — the template's overview, or one of its tasks. */
+/** `/settings/templates/:templateId/*`: a saved template's overview, or one of its tasks. */
 export function TemplateEditorRoute() {
   const { templateId } = useParams()
   const { data } = useStore()
@@ -92,7 +90,7 @@ export function TemplateEditorRoute() {
           icon={<LayoutTemplate className="size-5" />}
           title="Template not found"
           description="It may have been deleted on another device."
-          action={<ButtonLink to="/templates">Back to templates</ButtonLink>}
+          action={<ButtonLink to={MANAGE_TEMPLATES_PATH}>Back to templates</ButtonLink>}
         />
       </Card>
     )
@@ -107,10 +105,15 @@ function TemplateEditor({ stored }: { stored: TaskTemplate }) {
     <Routes>
       <Route index element={<TemplateOverview template={draft} update={update} discard={discard} />} />
       <Route path="tasks/:taskId" element={<TemplateTaskEditor template={draft} update={update} />} />
-      <Route path="*" element={<Navigate to={`/templates/${draft.id}`} replace />} />
+      <Route path="*" element={<Navigate to={templatePath(draft.id)} replace />} />
     </Routes>
   )
 }
+
+const TRAIL = [
+  { label: 'Settings', to: '/settings' },
+  { label: 'Templates', to: MANAGE_TEMPLATES_PATH },
+]
 
 function Breadcrumbs({ trail }: { trail: { label: string; to: string }[] }) {
   return (
@@ -145,7 +148,6 @@ function TemplateOverview({
   const { saveTaskTemplate, deleteTaskTemplate } = useStore()
   const navigate = useNavigate()
   const toast = useToast()
-  const [assigning, setAssigning] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   // Kept as typed, so a trailing comma survives until the next tag is written.
   const [tagText, setTagText] = useState(template.tags.join(', '))
@@ -183,19 +185,19 @@ function TemplateOverview({
     copy.tasks = copy.tasks.map((task) => ({ ...task, id: createId('tt'), questions: task.questions.map(copyQuestion) }))
     saveTaskTemplate(copy)
     toast.success('Template duplicated', 'You’re now editing the copy.')
-    navigate(`/templates/${copy.id}`)
+    navigate(templatePath(copy.id))
   }
 
   function deleteTemplate() {
     discard()
     deleteTaskTemplate(template.id)
     toast.success('Template deleted', 'Tasks already added from it stay on people’s lists.')
-    navigate('/templates', { replace: true })
+    navigate(MANAGE_TEMPLATES_PATH, { replace: true })
   }
 
   return (
     <div className="space-y-5">
-      <Breadcrumbs trail={[{ label: 'Task templates', to: '/templates' }]} />
+      <Breadcrumbs trail={TRAIL} />
 
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
@@ -212,10 +214,6 @@ function TemplateOverview({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <Button variant="primary" onClick={() => setAssigning(true)} disabled={template.tasks.length === 0}>
-            <UserPlus className="size-4" />
-            Add to someone’s tasks
-          </Button>
           <Menu
             trigger={({ toggle }) => (
               <IconButton label="Template actions" variant="secondary" onClick={toggle}>
@@ -368,8 +366,6 @@ function TemplateOverview({
         </Card>
       </div>
 
-      {assigning ? <AssignTemplateModal template={template} onClose={() => setAssigning(false)} /> : null}
-
       <Modal
         open={confirmingDelete}
         onClose={() => setConfirmingDelete(false)}
@@ -414,7 +410,7 @@ function TemplateTaskEditor({ template, update }: { template: TaskTemplate; upda
     window.scrollTo({ top: 0 })
   }, [taskId])
 
-  if (!task) return <Navigate to={`/templates/${template.id}`} replace />
+  if (!task) return <Navigate to={templatePath(template.id)} replace />
 
   const setTask = (changes: Partial<TemplateTask>) =>
     update((current) => ({
@@ -436,8 +432,8 @@ function TemplateTaskEditor({ template, update }: { template: TaskTemplate; upda
     <div className="space-y-5">
       <Breadcrumbs
         trail={[
-          { label: 'Task templates', to: '/templates' },
-          { label: templateTitle(template), to: `/templates/${template.id}` },
+          ...TRAIL,
+          { label: templateTitle(template), to: templatePath(template.id) },
         ]}
       />
 
@@ -518,7 +514,7 @@ function TemplateTaskEditor({ template, update }: { template: TaskTemplate; upda
           </section>
 
           <div className="border-line flex items-center justify-between gap-3 border-t pt-4">
-            <ButtonLink to={`/templates/${template.id}`} variant="ghost">
+            <ButtonLink to={templatePath(template.id)} variant="ghost">
               <ChevronLeft className="size-4" />
               All tasks
             </ButtonLink>
@@ -541,7 +537,7 @@ function TaskStepper({
   next?: TemplateTask
   labelled?: boolean
 }) {
-  const link = (task: TemplateTask) => `/templates/${templateId}/tasks/${task.id}`
+  const link = (task: TemplateTask) => `${templatePath(templateId)}/tasks/${task.id}`
   if (labelled) {
     return (
       <div className="flex items-center gap-2">

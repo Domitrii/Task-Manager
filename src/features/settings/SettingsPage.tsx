@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Database, Pencil, Plug, Plus, QrCode, RotateCcw, Store, Trash2 } from 'lucide-react'
 import { CATEGORY_LABELS } from '@/config/navigation'
 import { useStore } from '@/data/store'
@@ -26,14 +26,20 @@ import { PageHeader } from '@/components/shared/PageHeader'
 import { AccountCard } from '@/features/account/AccountCard'
 import { useSync } from '@/features/account/sync'
 import { ShowQrButton } from '@/features/qr/ShowQrButton'
+import { ManageTemplates } from '@/features/templates/ManageTemplates'
 
-type TabKey = 'venue' | 'equipment' | 'staff' | 'suppliers' | 'data'
+const TABS = ['venue', 'equipment', 'staff', 'suppliers', 'templates', 'data'] as const
+type TabKey = (typeof TABS)[number]
 
 const CATEGORY_VALUES = Object.keys(CATEGORY_LABELS) as MonitoredCategory[]
 const ROLES: StaffRole[] = ['manager', 'head_chef', 'chef', 'supervisor', 'front_of_house', 'kp']
 
 export function SettingsPage() {
-  const [tab, setTab] = useState<TabKey>('venue')
+  // In the address, so a link (or Back from editing a template) can open a tab.
+  const [params, setParams] = useSearchParams()
+  const requested = params.get('tab')
+  const tab: TabKey = TABS.find((key) => key === requested) ?? 'venue'
+  const setTab = (next: TabKey) => setParams(next === 'venue' ? {} : { tab: next }, { replace: true })
 
   return (
     <div className="space-y-5">
@@ -50,6 +56,7 @@ export function SettingsPage() {
           { value: 'equipment', label: 'Equipment' },
           { value: 'staff', label: 'Team' },
           { value: 'suppliers', label: 'Suppliers' },
+          { value: 'templates', label: 'Templates' },
           { value: 'data', label: 'Data' },
         ]}
       />
@@ -58,6 +65,7 @@ export function SettingsPage() {
       {tab === 'equipment' ? <EquipmentTab /> : null}
       {tab === 'staff' ? <StaffTab /> : null}
       {tab === 'suppliers' ? <SuppliersTab /> : null}
+      {tab === 'templates' ? <ManageTemplates /> : null}
       {tab === 'data' ? <DataTab /> : null}
     </div>
   )

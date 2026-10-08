@@ -23,8 +23,11 @@ const SettingsPage = lazy(async () => ({
 const QrLabelsPage = lazy(async () => ({
   default: (await import('@/features/qr/QrLabelsPage')).QrLabelsPage,
 }))
-const TemplatesRoutes = lazy(async () => ({
-  default: (await import('@/features/templates/TemplatesRoutes')).TemplatesRoutes,
+const TemplatesPage = lazy(async () => ({
+  default: (await import('@/features/templates/TemplatesPage')).TemplatesPage,
+}))
+const TemplateEditorRoutes = lazy(async () => ({
+  default: (await import('@/features/templates/TemplateEditorRoutes')).TemplateEditorRoutes,
 }))
 // Setup runs once per venue, so its packs stay out of the everyday bundle.
 const SetupPage = lazy(async () => ({
@@ -90,10 +93,10 @@ export function App() {
         <Route path="stock" element={<StockPage />} />
         <Route path="tasks" element={<TasksPage />} />
         <Route
-          path="templates/*"
+          path="templates"
           element={
             <Suspense fallback={<PageSkeleton />}>
-              <TemplatesRoutes />
+              <TemplatesPage />
             </Suspense>
           }
         />
@@ -110,6 +113,14 @@ export function App() {
           element={
             <Suspense fallback={<PageSkeleton />}>
               <SettingsPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="settings/templates/*"
+          element={
+            <Suspense fallback={<PageSkeleton />}>
+              <TemplateEditorRoutes />
             </Suspense>
           }
         />

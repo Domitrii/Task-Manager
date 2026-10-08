@@ -1,222 +1,196 @@
 import { useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { ChevronRight, Ellipsis, LayoutTemplate, LibraryBig, Plus, Search, UserPlus } from 'lucide-react'
+import { Check, LayoutTemplate, Plus, Search, Settings } from 'lucide-react'
 import { useStore } from '@/data/store'
-import { createTemplateLibrary, newTemplateTask, TEMPLATE_GROUPS } from '@/data/taskTemplateLibrary'
+import { TEMPLATE_GROUPS } from '@/data/taskQuestions'
+import { createTemplateLibrary } from '@/data/taskTemplateLibrary'
 import type { TaskTemplate } from '@/data/types'
-import { cn, createId } from '@/lib/utils'
+import { questionSummary } from '@/lib/taskAnswers'
+import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/Badge'
-import { Button, IconButton } from '@/components/ui/Button'
+import { Button, ButtonLink } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { TextInput } from '@/components/ui/Field'
-import { Menu, MenuItem } from '@/components/ui/Menu'
+import { Modal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
 import { PageHeader } from '@/components/shared/PageHeader'
-import { AssignTemplateModal } from './AssignTemplateModal'
+import { MANAGE_TEMPLATES_PATH } from './editing'
 
-/** Groups in day order, then any a venue made up, alphabetically. */
-function orderGroups(groups: Iterable<string>): string[] {
-  const known: readonly string[] = TEMPLATE_GROUPS
-  return [...new Set(groups)].sort((a, b) => {
-    const left = known.indexOf(a)
-    const right = known.indexOf(b)
-    if (left !== -1 || right !== -1) return (left === -1 ? Infinity : left) - (right === -1 ? Infinity : right)
-    return a.localeCompare(b)
-  })
-}
+const ADDED = 'Added'
 
 function questionCount(template: TaskTemplate): number {
   return template.tasks.reduce((total, task) => total + task.questions.length, 0)
 }
 
+/**
+ * The template library. Adding one saves it to the venue's own templates,
+ * ready to pick when creating a task; it doesn't create any tasks itself.
+ */
 export function TemplatesPage() {
-  const { data, saveTaskTemplate, addTaskTemplates } = useStore()
+  const { data, addTaskTemplates } = useStore()
   const toast = useToast()
-  const navigate = useNavigate()
+  // Built once per visit, so a template keeps the same ids between preview and add.
+  const [library] = useState(createTemplateLibrary)
   const [query, setQuery] = useState('')
-  const [group, setGroup] = useState<string | null>(null)
-  const [assigning, setAssigning] = useState<TaskTemplate | null>(null)
+  const [filter, setFilter] = useState<string | null>(null)
+  const [previewing, setPreviewing] = useState<TaskTemplate | null>(null)
 
-  const templates = data.taskTemplates
-  const groups = useMemo(() => orderGroups(templates.map((template) => template.group)), [templates])
+  const saved = useMemo(() => new Set(data.taskTemplates.map((template) => template.id)), [data.taskTemplates])
+  const addedCount = library.filter((template) => saved.has(template.id)).length
 
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase()
-    return templates.filter(
+    return library.filter(
       (template) =>
-        (group === null || template.group === group) &&
+        (filter === null || (filter === ADDED ? saved.has(template.id) : template.group === filter)) &&
         (needle === '' ||
           template.name.toLowerCase().includes(needle) ||
           template.tags.some((tag) => tag.toLowerCase().includes(needle)) ||
           template.tasks.some((task) => task.title.toLowerCase().includes(needle))),
     )
-  }, [templates, query, group])
+  }, [library, query, filter, saved])
 
-  const missingFromLibrary = useMemo(() => {
-    const have = new Set(templates.map((template) => template.id))
-    return createTemplateLibrary().filter((template) => !have.has(template.id))
-  }, [templates])
-
-  function addLibrary() {
-    addTaskTemplates(missingFromLibrary)
-    toast.success(
-      `${missingFromLibrary.length} template${missingFromLibrary.length === 1 ? '' : 's'} added`,
-      'Open any of them to change its tasks and questions.',
-    )
-  }
-
-  function createTemplate() {
-    const template: TaskTemplate = {
-      id: createId('tp'),
-      name: '',
-      group: group ?? 'Ad hoc',
-      tags: [],
-      tasks: [newTemplateTask()],
-    }
-    saveTaskTemplate(template)
-    navigate(`/templates/${template.id}`)
+  function add(template: TaskTemplate) {
+    addTaskTemplates([structuredClone(template)])
+    toast.success(`${template.name} added`, 'Choose it under “Template to use” when you create a task.')
   }
 
   return (
     <div className="space-y-5">
       <PageHeader
         title="Task templates"
-        description="Ready-made sets of tasks. Change any question or option, then add the tasks to someone’s list."
+        description="Add the templates your venue uses. They’re saved for later: pick one when you create a task, and change their questions in Settings."
         actions={
-          <>
-            <Button variant="primary" onClick={createTemplate}>
-              <Plus className="size-4" />
-              New template
-            </Button>
-            {templates.length > 0 && missingFromLibrary.length > 0 ? (
-              <Menu
-                trigger={({ toggle }) => (
-                  <IconButton label="More template actions" variant="secondary" onClick={toggle}>
-                    <Ellipsis className="size-4" />
-                  </IconButton>
-                )}
-              >
-                {({ close }) => (
-                  <MenuItem
-                    icon={<LibraryBig className="size-4" />}
-                    description={`${missingFromLibrary.length} you don’t have yet`}
-                    onClick={() => {
-                      addLibrary()
-                      close()
-                    }}
-                  >
-                    Add starter templates
-                  </MenuItem>
-                )}
-              </Menu>
+          <ButtonLink to={MANAGE_TEMPLATES_PATH}>
+            <Settings className="size-4" />
+            Manage my templates
+            {data.taskTemplates.length > 0 ? (
+              <span className="bg-surface-muted text-ink-muted rounded-full px-1.5 text-xs tabular-nums">
+                {data.taskTemplates.length}
+              </span>
             ) : null}
-          </>
+          </ButtonLink>
         }
       />
 
-      {templates.length === 0 ? (
+      <div className="space-y-3">
+        <div className="relative max-w-md">
+          <Search className="text-ink-subtle pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+          <TextInput
+            type="search"
+            value={query}
+            placeholder="Search templates, tasks or tags"
+            aria-label="Search templates"
+            onChange={(event) => setQuery(event.target.value)}
+            className="pl-9"
+          />
+        </div>
+        <div
+          role="group"
+          aria-label="Filter templates"
+          className="scrollbar-none -mx-4 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:px-0"
+        >
+          {[null, ADDED, ...TEMPLATE_GROUPS].map((entry) => (
+            <button
+              key={entry ?? 'all'}
+              type="button"
+              aria-pressed={filter === entry}
+              onClick={() => setFilter(entry)}
+              className={cn(
+                'flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-4 text-sm font-semibold whitespace-nowrap transition-colors',
+                filter === entry
+                  ? 'border-brand-600 bg-brand-600 text-white'
+                  : 'border-line-default bg-surface text-ink-muted hover:border-line-strong hover:text-ink',
+              )}
+            >
+              {entry === ADDED ? <Check className="size-3.5" /> : null}
+              {entry ?? 'All'}
+              {entry === ADDED ? <span className="tabular-nums opacity-80">{addedCount}</span> : null}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {visible.length === 0 ? (
         <Card>
           <EmptyState
-            icon={<LayoutTemplate className="size-5" />}
-            title="No templates yet"
-            description={`Start from the library of ${missingFromLibrary.length} templates: opening and closing checks, temperature records, audits and incident forms. Every one can be edited.`}
-            action={
-              <div className="flex flex-wrap justify-center gap-2">
-                <Button variant="primary" onClick={addLibrary}>
-                  <LibraryBig className="size-4" />
-                  Add starter templates
-                </Button>
-                <Button onClick={createTemplate}>Start from scratch</Button>
-              </div>
-            }
+            icon={filter === ADDED ? <LayoutTemplate className="size-5" /> : <Search className="size-5" />}
+            title={filter === ADDED ? 'None added yet' : 'No templates match'}
+            description={filter === ADDED ? 'Add templates from the library and they’ll show here.' : 'Try another search or filter.'}
           />
         </Card>
       ) : (
-        <>
-          <div className="space-y-3">
-            <div className="relative max-w-md">
-              <Search className="text-ink-subtle pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
-              <TextInput
-                type="search"
-                value={query}
-                placeholder="Search templates, tasks or tags"
-                aria-label="Search templates"
-                onChange={(event) => setQuery(event.target.value)}
-                className="pl-9"
-              />
-            </div>
-            <div
-              role="group"
-              aria-label="Filter by group"
-              className="scrollbar-none -mx-4 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:px-0"
-            >
-              {[null, ...groups].map((entry) => (
-                <button
-                  key={entry ?? 'all'}
-                  type="button"
-                  aria-pressed={group === entry}
-                  onClick={() => setGroup(entry)}
-                  className={cn(
-                    'flex h-9 shrink-0 items-center rounded-full border px-4 text-sm font-semibold whitespace-nowrap transition-colors',
-                    group === entry
-                      ? 'border-brand-600 bg-brand-600 text-white'
-                      : 'border-line-default bg-surface text-ink-muted hover:border-line-strong hover:text-ink',
-                  )}
-                >
-                  {entry ?? 'All'}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {visible.length === 0 ? (
-            <Card>
-              <EmptyState
-                icon={<Search className="size-5" />}
-                title="No templates match"
-                description="Try another search or group."
-              />
-            </Card>
-          ) : (
-            orderGroups(visible.map((template) => template.group)).map((name) => {
-              const inGroup = visible.filter((template) => template.group === name)
-              return (
-                <section key={name} aria-labelledby={`group-${name}`}>
-                  <h2 id={`group-${name}`} className="text-ink-muted mb-2 px-1 text-[13px] font-semibold">
-                    {name} <span className="text-ink-subtle font-normal">· {inGroup.length}</span>
-                  </h2>
-                  <Card className="overflow-hidden">
-                    <ul className="divide-line divide-y">
-                      {inGroup.map((template) => (
-                        <TemplateRow key={template.id} template={template} onAssign={() => setAssigning(template)} />
-                      ))}
-                    </ul>
-                  </Card>
-                </section>
-              )
-            })
-          )}
-        </>
+        TEMPLATE_GROUPS.filter((group) => visible.some((template) => template.group === group)).map((group) => {
+          const inGroup = visible.filter((template) => template.group === group)
+          return (
+            <section key={group} aria-labelledby={`group-${group}`}>
+              <h2 id={`group-${group}`} className="text-ink-muted mb-2 px-1 text-[13px] font-semibold">
+                {group} <span className="text-ink-subtle font-normal">· {inGroup.length}</span>
+              </h2>
+              <Card className="overflow-hidden">
+                <ul className="divide-line divide-y">
+                  {inGroup.map((template) => (
+                    <LibraryRow
+                      key={template.id}
+                      template={template}
+                      added={saved.has(template.id)}
+                      onPreview={() => setPreviewing(template)}
+                      onAdd={() => add(template)}
+                    />
+                  ))}
+                </ul>
+              </Card>
+            </section>
+          )
+        })
       )}
 
-      {assigning ? <AssignTemplateModal template={assigning} onClose={() => setAssigning(null)} /> : null}
+      {previewing ? (
+        <TemplatePreview
+          template={previewing}
+          added={saved.has(previewing.id)}
+          onAdd={() => add(previewing)}
+          onClose={() => setPreviewing(null)}
+        />
+      ) : null}
     </div>
   )
 }
 
-function TemplateRow({ template, onAssign }: { template: TaskTemplate; onAssign: () => void }) {
+function AddButton({ added, onAdd, name }: { added: boolean; onAdd: () => void; name: string }) {
+  return added ? (
+    <span className="text-pass-700 dark:text-pass-500 flex h-8 shrink-0 items-center gap-1 px-2 text-[13px] font-semibold">
+      <Check className="size-4" />
+      Added
+    </span>
+  ) : (
+    <Button size="sm" onClick={onAdd} aria-label={`Add ${name} to my templates`} className="shrink-0">
+      <Plus className="size-4" />
+      Add
+    </Button>
+  )
+}
+
+function LibraryRow({
+  template,
+  added,
+  onPreview,
+  onAdd,
+}: {
+  template: TaskTemplate
+  added: boolean
+  onPreview: () => void
+  onAdd: () => void
+}) {
   const questions = questionCount(template)
   return (
-    <li className="hover:bg-surface-muted/60 flex items-center gap-2 pr-2 transition-colors sm:pr-3">
-      <Link to={`/templates/${template.id}`} className="flex min-w-0 flex-1 items-center gap-3 py-3 pl-4 sm:pl-5">
+    <li className="hover:bg-surface-muted/60 flex items-center gap-2 pr-3 transition-colors sm:pr-4">
+      <button type="button" onClick={onPreview} className="flex min-w-0 flex-1 items-center gap-3 py-3 pl-4 text-left sm:pl-5">
         <span className="bg-surface-muted flex size-10 shrink-0 items-center justify-center rounded-lg text-lg" aria-hidden>
-          {template.icon || <LayoutTemplate className="text-ink-subtle size-4" />}
+          {template.icon}
         </span>
         <span className="min-w-0 flex-1">
-          <span className={cn('block truncate text-sm font-medium', template.name ? 'text-ink' : 'text-ink-subtle italic')}>
-            {template.name || 'Untitled template'}
-          </span>
+          <span className="text-ink block truncate text-sm font-medium">{template.name}</span>
           <span className="text-ink-muted mt-0.5 block truncate text-xs">
             {[
               template.schedule,
@@ -236,16 +210,71 @@ function TemplateRow({ template, onAssign }: { template: TaskTemplate; onAssign:
             </span>
           ) : null}
         </span>
-        <ChevronRight className="text-ink-subtle size-4 shrink-0 sm:hidden" />
-      </Link>
-      <Button size="sm" onClick={onAssign} disabled={template.tasks.length === 0} className="hidden sm:inline-flex">
-        <UserPlus className="size-4" />
-        Assign
-      </Button>
-      <IconButton label={`Assign ${template.name || 'template'}`} size="sm" onClick={onAssign} disabled={template.tasks.length === 0} className="sm:hidden">
-        <UserPlus className="size-4" />
-      </IconButton>
-      <ChevronRight className="text-ink-subtle hidden size-4 shrink-0 sm:block" aria-hidden />
+      </button>
+      <AddButton added={added} onAdd={onAdd} name={template.name} />
     </li>
+  )
+}
+
+/** Read-only look inside a library template before adding it. */
+function TemplatePreview({
+  template,
+  added,
+  onAdd,
+  onClose,
+}: {
+  template: TaskTemplate
+  added: boolean
+  onAdd: () => void
+  onClose: () => void
+}) {
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      size="lg"
+      title={`${template.icon ? `${template.icon} ` : ''}${template.name}`}
+      description={[template.group, template.schedule].filter(Boolean).join(' · ')}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Close
+          </Button>
+          {added ? (
+            <ButtonLink to={MANAGE_TEMPLATES_PATH} variant="secondary">
+              <Check className="size-4" />
+              Added · Manage
+            </ButtonLink>
+          ) : (
+            <Button variant="primary" onClick={onAdd}>
+              <Plus className="size-4" />
+              Add to my templates
+            </Button>
+          )}
+        </>
+      }
+    >
+      <div className="space-y-5">
+        <p className="text-ink-muted text-sm">
+          Once added, every question and option can be changed in Settings → Templates.
+        </p>
+        {template.tasks.map((task, index) => (
+          <section key={task.id}>
+            <h3 className="text-ink text-sm font-semibold">
+              {template.tasks.length > 1 ? `${index + 1}. ` : ''}
+              {task.title}
+            </h3>
+            <ol className="border-line divide-line mt-2 divide-y rounded-lg border">
+              {task.questions.map((question) => (
+                <li key={question.id} className="px-3 py-2">
+                  <p className="text-ink text-[13px]">{question.label}</p>
+                  <p className="text-ink-muted text-xs">{questionSummary(question)}</p>
+                </li>
+              ))}
+            </ol>
+          </section>
+        ))}
+      </div>
+    </Modal>
   )
 }

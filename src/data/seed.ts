@@ -553,7 +553,7 @@ export function createSeedData(now: Date = new Date()): AppData {
       lastCountedBy: pick(kitchenStaff).id,
     })),
     tasks: buildTasks(now),
-    // The starter library is added from the Task templates page, keeping it out of the first load.
+    // Templates are saved from the library one by one, as a venue picks the ones it uses.
     taskTemplates: [],
     settings: DEFAULT_SETTINGS,
   }

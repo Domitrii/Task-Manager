@@ -7,7 +7,7 @@
  * library twice (say, on two devices) only ever upserts the same templates.
  */
 import { createId } from '@/lib/utils'
-import { newOption, newQuestion, type OptionSpec } from './taskQuestions'
+import { newOption, newQuestion, TEMPLATE_GROUPS, type OptionSpec } from './taskQuestions'
 import type {
   TaskCategory,
   TaskPriority,
@@ -16,19 +16,6 @@ import type {
   TemplateTask,
 } from './types'
 
-/** The order groups are listed in, through the trading day. */
-export const TEMPLATE_GROUPS = [
-  'Before open',
-  'Open',
-  'Morning',
-  'Evening',
-  'Close',
-  'After close',
-  'All day',
-  'Over several days',
-  'Multiple schedules',
-  'Ad hoc',
-] as const
 
 /* Builders ------------------------------------------------------------------ */
 
@@ -89,10 +76,6 @@ function task(title: string, questions: TaskQuestion[], extras: TaskExtras = {})
     priority: extras.priority ?? 'normal',
     questions,
   }
-}
-
-export function newTemplateTask(title = ''): TemplateTask {
-  return task(title, [])
 }
 
 function slug(name: string): string {

@@ -22,6 +22,7 @@ import { Button } from '@/components/ui/Button'
 import { Checkbox, Select, TextInput, Textarea } from '@/components/ui/Field'
 import { Modal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
+import { templatePath } from '@/features/templates/editing'
 import { QuestionListEditor } from '@/features/templates/QuestionEditor'
 
 /**
@@ -131,7 +132,7 @@ export function TaskRunModal({ task, onClose }: { task: Task; onClose: () => voi
               <>
                 {' '}
                 To change it for next time, edit{' '}
-                <Link to={`/templates/${template.id}`} onClick={onClose} className="font-semibold underline">
+                <Link to={templatePath(template.id)} onClick={onClose} className="font-semibold underline">
                   {template.name}
                 </Link>
                 .

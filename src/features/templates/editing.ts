@@ -24,3 +24,10 @@ export function copyQuestion(question: TaskQuestion): TaskQuestion {
 export function questionAnchor(questionId: string): string {
   return `question-${questionId}`
 }
+
+/** Where a saved template is edited. Saved templates are managed from Settings. */
+export function templatePath(templateId: string): string {
+  return `/settings/templates/${templateId}`
+}
+
+export const MANAGE_TEMPLATES_PATH = '/settings?tab=templates'
