@@ -11,11 +11,17 @@ const linkParams = new URLSearchParams(window.location.hash.slice(1))
 /** This page was opened from a password reset email, so the person needs to choose a new password. */
 export const openedFromPasswordReset = linkParams.get('type') === 'recovery' && linkParams.has('access_token')
 
+/** An email change has just been confirmed: the link has signed in with the new address. */
+export const emailChangeConfirmed = linkParams.get('type') === 'email_change' && linkParams.has('access_token')
+
+/** What Supabase says about a link that worked but isn't the end of it, e.g. the first of two email change links. */
+export const emailLinkMessage = linkParams.get('message')
+
 /** Why an email link didn't work (usually that it expired or was already used), or null. */
 export const emailLinkError = linkParams.get('error_description')
 
 // Shown once; a reload shouldn't bring it back.
-if (emailLinkError) window.history.replaceState(null, '', window.location.pathname + window.location.search)
+if (emailLinkError || emailLinkMessage) window.history.replaceState(null, '', window.location.pathname + window.location.search)
 
 /**
  * The Supabase client, or `null` when the app is built without Supabase keys,

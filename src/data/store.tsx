@@ -13,11 +13,12 @@ import {
   useEffect,
   useMemo,
   useReducer,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
 import { deriveDeliveryStatus, evaluateTemperature } from '@/lib/compliance'
-import { createId } from '@/lib/utils'
+import { createId, initialsOf } from '@/lib/utils'
 import { applyChanges, EMPTY_DATA, type RecordChange } from './records'
 import type { DataRepository } from './repository'
 import type {
@@ -165,8 +166,9 @@ interface StoreValue {
   ready: boolean
   /** False on a first run, until the venue is set up or demo data is loaded. */
   hasData: boolean
-  /** Staff member currently signed in on this device. */
+  /** Staff member currently signed in on this device: in a synced team, always the signed-in person. */
   activeStaffId: ID
+  /** Device-only use: who's holding the device. A synced team ignores it. */
   setActiveStaffId: (id: ID) => void
   activeStaff: StaffMember
   recordTemperature: (input: RecordTemperatureInput) => TemperatureLog
@@ -200,13 +202,40 @@ interface StoreValue {
 
 const StoreContext = createContext<StoreValue | null>(null)
 
+/** Whoever is signed in to a synced team. Each person has their own record in the team's staff list. */
+export interface SignedInPerson {
+  userId: string
+  /** From their profile; the team screens make sure there is one. */
+  name: string
+}
+
+/** The same on every device, so two of someone's devices never add them twice. */
+function staffIdFor(userId: string): ID {
+  return `st_${userId}`
+}
+
+/**
+ * Setting a synced venue up again replaces its records, but everyone keeps
+ * their place in the team. Whoever ran setup is the setup's manager.
+ */
+function keepAccounts(next: AppData, current: StaffMember[], person: SignedInPerson): AppData {
+  const mine = current.find((member) => member.userId === person.userId)
+  const others = current.filter((member) => member.userId && member.userId !== person.userId)
+  const [manager, ...rest] = next.staff
+  const me = manager ? [{ ...manager, id: mine?.id ?? staffIdFor(person.userId), userId: person.userId }] : []
+  return { ...next, staff: [...me, ...rest, ...others] }
+}
+
 const ACTIVE_STAFF_KEY = 'mise.activeStaff'
 
 export function StoreProvider({
   repository,
+  person,
   children,
 }: {
   repository: DataRepository
+  /** Set when the team syncs: the app then acts as this person rather than asking who's using the device. */
+  person?: SignedInPerson
   children: ReactNode
 }) {
   const [data, dispatch] = useReducer(reducer, EMPTY_DATA)
@@ -248,21 +277,58 @@ export function StoreProvider({
     repository.save(data)
   }, [data, hasData, repository])
 
+  // A synced team's staff list has a record for everyone who signs in. Someone
+  // in it from before accounts (same name, no account yet) takes that record
+  // over, so their past entries stay theirs; anyone else is added.
+  const userId = person?.userId
+  const personName = person?.name.trim() ?? ''
+  const lastName = useRef(personName)
+  useEffect(() => {
+    if (!userId || !hasData || !personName) return
+    const linked = data.staff.find((member) => member.userId === userId)
+    const renamed = personName !== lastName.current
+    lastName.current = personName
+    if (linked) {
+      // A name changed on their profile carries over to the team's list.
+      if (renamed && linked.name !== personName) {
+        dispatch({ type: 'staff/save', member: { ...linked, name: personName, initials: initialsOf(personName) } })
+      }
+      return
+    }
+    const key = personName.toLowerCase()
+    const unclaimed = data.staff.find((member) => !member.userId && member.name.trim().toLowerCase() === key)
+    dispatch({
+      type: 'staff/save',
+      member: unclaimed
+        ? { ...unclaimed, userId, active: true }
+        : { id: staffIdFor(userId), userId, name: personName, role: 'chef', initials: initialsOf(personName), active: true },
+    })
+  }, [userId, personName, hasData, data.staff])
+
   const setActiveStaffId = useCallback((id: ID) => {
     setActiveStaffIdState(id)
     localStorage.setItem(ACTIVE_STAFF_KEY, id)
   }, [])
 
   const value = useMemo<StoreValue>(() => {
-    const activeStaff =
-      data.staff.find((person) => person.id === activeStaffId) ??
-      data.staff[0] ?? { id: '', name: 'Unassigned', role: 'chef', initials: '—', active: true }
+    const activeStaff: StaffMember = userId
+      ? (data.staff.find((member) => member.userId === userId) ?? {
+          // Only until the effect above has added them.
+          id: staffIdFor(userId),
+          userId,
+          name: personName || 'You',
+          role: 'chef',
+          initials: initialsOf(personName) || '—',
+          active: true,
+        })
+      : (data.staff.find((member) => member.id === activeStaffId) ??
+        data.staff[0] ?? { id: '', name: 'Unassigned', role: 'chef', initials: '—', active: true })
 
     return {
       data,
       ready,
       hasData,
-      activeStaffId,
+      activeStaffId: activeStaff.id,
       setActiveStaffId,
       activeStaff,
 
@@ -440,10 +506,10 @@ export function StoreProvider({
       },
 
       replaceData(next) {
-        applyData(next)
+        applyData(userId ? keepAccounts(next, data.staff, { userId, name: personName }) : next)
       },
     }
-  }, [data, ready, hasData, activeStaffId, setActiveStaffId, repository, applyData])
+  }, [data, ready, hasData, activeStaffId, setActiveStaffId, repository, applyData, userId, personName])
 
   return <StoreContext value={value}>{children}</StoreContext>
 }

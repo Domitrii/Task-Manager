@@ -1,5 +1,5 @@
 import { createContext, use } from 'react'
-import { isAuthRetryableFetchError, type AuthError } from '@supabase/supabase-js'
+import { isAuthRetryableFetchError, type AuthError, type SupabaseClient, type User } from '@supabase/supabase-js'
 import { CloudAlert, CloudCheck, CloudOff, CloudUpload, type LucideIcon } from 'lucide-react'
 import type { SyncStatus } from '@/data/supabaseRepository'
 import { formatAgo } from '@/lib/format'
@@ -8,6 +8,8 @@ import type { TeamDetails, TeamRef } from './team'
 export interface SyncApi {
   /** The person signed in on this device. */
   email: string
+  /** Their name from their profile; empty until they set one. */
+  name: string
   team: TeamRef
   status: SyncStatus
   syncNow: () => void
@@ -21,6 +23,8 @@ export interface SyncApi {
   newJoinCode: () => Promise<string>
   /** Takes this account out of the team and back to choosing one. */
   leaveTeam: () => Promise<void>
+  /** Deletes this person's account for good; the team and its records stay. Needs a connection. */
+  deleteAccount: () => Promise<void>
 }
 
 export const SyncContext = createContext<SyncApi | null>(null)
@@ -28,6 +32,18 @@ export const SyncContext = createContext<SyncApi | null>(null)
 /** Sync controls, or null when the app runs device-only because no Supabase keys are set. */
 export function useSync(): SyncApi | null {
   return use(SyncContext)
+}
+
+/** The name someone gave on their profile, kept with their Supabase account. */
+export function profileName(user: User): string {
+  const name: unknown = user.user_metadata?.full_name
+  return typeof name === 'string' ? name : ''
+}
+
+/** Saves the name someone goes by. Resolves to an error message, or null once saved. */
+export async function saveProfileName(client: SupabaseClient, name: string): Promise<string | null> {
+  const { error } = await client.auth.updateUser({ data: { full_name: name.trim() } })
+  return error ? authErrorMessage(error) : null
 }
 
 export function authErrorMessage(error: AuthError): string {
@@ -44,9 +60,17 @@ export function authErrorMessage(error: AuthError): string {
       return 'That’s the password you have now. Choose a different one.'
     case 'weak_password':
       return 'Choose a longer password: at least 6 characters.'
+    case 'email_address_invalid':
+    case 'validation_failed':
+      return 'That email address doesn’t look right.'
+    case 'reauthentication_needed':
+    case 'reauthentication_not_valid':
+      return 'For security, sign out and back in, then try again.'
     case 'over_request_rate_limit':
-    case 'over_email_send_rate_limit':
       return 'Too many attempts. Wait a minute and try again.'
+    // The project's limit on emails per hour, shared by everyone, not this person's attempts.
+    case 'over_email_send_rate_limit':
+      return 'Mise has sent too many emails in the last hour. Try again later.'
     default:
       return error.message
   }

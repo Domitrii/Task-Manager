@@ -4,7 +4,7 @@ import { BrowserRouter } from 'react-router-dom'
 import { App } from './App'
 import { ToastProvider } from './components/ui/Toast'
 import { LocalStorageRepository, type DataRepository } from './data/repository'
-import { StoreProvider } from './data/store'
+import { StoreProvider, type SignedInPerson } from './data/store'
 import { AccountGate } from './features/account/AccountGate'
 import { supabase } from './lib/supabase'
 import { ThemeProvider } from './lib/theme'
@@ -17,9 +17,9 @@ import './index.css'
  */
 const deviceOnly = new LocalStorageRepository()
 
-function renderApp(repository: DataRepository) {
+function renderApp(repository: DataRepository, person?: SignedInPerson) {
   return (
-    <StoreProvider repository={repository}>
+    <StoreProvider repository={repository} person={person}>
       <BrowserRouter>
         <App />
       </BrowserRouter>

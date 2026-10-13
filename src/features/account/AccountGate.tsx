@@ -1,32 +1,44 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
 import type { SupabaseClient, User } from '@supabase/supabase-js'
 import type { DataRepository, LocalStorageRepository } from '@/data/repository'
+import type { SignedInPerson } from '@/data/store'
 import { SupabaseRepository } from '@/data/supabaseRepository'
-import { openedFromPasswordReset, signOutThisDevice } from '@/lib/supabase'
+import { useToast } from '@/components/ui/Toast'
+import { emailChangeConfirmed, emailLinkMessage, openedFromPasswordReset, signOutThisDevice } from '@/lib/supabase'
 import { NewPasswordPage } from './NewPasswordPage'
 import { SignInPage } from './SignInPage'
-import { authErrorMessage, SyncContext, type SyncApi } from './sync'
+import { authErrorMessage, profileName, SyncContext, type SyncApi } from './sync'
 import { fetchTeamDetails, leaveTeam, regenerateJoinCode, type TeamRef } from './team'
 import { TeamChoicePage } from './TeamChoicePage'
+import { YourNamePage } from './YourNamePage'
 
 interface Account {
   userId: string
   email: string
+  /** What the person calls themselves, from their profile. Empty until they set one. */
+  name: string
   /** Null until this account has joined or created a team. */
   team: TeamRef | null
 }
 
+function accountFor(user: User): Account {
+  return { userId: user.id, email: user.email ?? '', name: profileName(user), team: null }
+}
+
 const ACCOUNT_KEY = 'mise.account'
+/** Development mounts twice; the link's message only needs saying once. */
+let linkNoticeShown = false
 /** Before teams, a device remembered only the venue's shared account. */
 const LEGACY_KEY = 'mise.venue'
 
 function readAccount(): Account | null {
   try {
     const stored = JSON.parse(localStorage.getItem(ACCOUNT_KEY) ?? 'null') as Account | null
-    if (stored?.userId) return stored
+    // Accounts remembered before profiles had no name.
+    if (stored?.userId) return { ...stored, name: stored.name ?? '' }
     // That account's records now belong to a team; it's looked up again once online.
     const legacy = JSON.parse(localStorage.getItem(LEGACY_KEY) ?? 'null') as { id?: string; email?: string } | null
-    return legacy?.id ? { userId: legacy.id, email: legacy.email ?? '', team: null } : null
+    return legacy?.id ? { userId: legacy.id, email: legacy.email ?? '', name: '', team: null } : null
   } catch {
     return null
   }
@@ -52,11 +64,12 @@ export function AccountGate({
   client: SupabaseClient
   /** Records this device kept before sync, offered to the first team it opens if that team has none. */
   legacy: LocalStorageRepository
-  children: (repository: DataRepository) => ReactNode
+  children: (repository: DataRepository, person: SignedInPerson) => ReactNode
 }) {
   const [account, setAccount] = useState<Account | null>(readAccount)
   // A password reset link has signed the person in; they choose a new password before anything else.
   const [resetting, setResetting] = useState(openedFromPasswordReset)
+  const toast = useToast()
 
   const update = useCallback((next: Account | null) => {
     writeAccount(next)
@@ -70,11 +83,29 @@ export function AccountGate({
   useEffect(() => {
     const { data } = client.auth.onAuthStateChange((event, session) => {
       if (event === 'PASSWORD_RECOVERY') setResetting(true)
-      if (!session || readAccount()?.userId === session.user.id) return
-      update({ userId: session.user.id, email: session.user.email ?? '', team: null })
+      if (!session) return
+      const current = readAccount()
+      const next = accountFor(session.user)
+      if (current?.userId !== next.userId) {
+        update(next)
+        return
+      }
+      // The same person with a new name, or an email change they've just confirmed.
+      if (current.email !== next.email || current.name !== next.name) {
+        update({ ...current, email: next.email, name: next.name })
+      }
     })
     return () => data.subscription.unsubscribe()
   }, [client, update])
+
+  // Where an email change link lands. With secure email change on, the first of
+  // the two links only says to open the other one.
+  useEffect(() => {
+    if (linkNoticeShown) return
+    linkNoticeShown = true
+    if (emailChangeConfirmed) toast.success('Email changed', 'Use the new address to sign in from now on.')
+    else if (emailLinkMessage) toast.success('Link accepted', emailLinkMessage)
+  }, [toast])
 
   const signOut = useCallback(async () => {
     // This device only: the account's other devices stay signed in.
@@ -91,7 +122,7 @@ export function AccountGate({
     (user: User) => {
       setResetting(false)
       // The reset may be for someone other than whoever last used this device.
-      if (readAccount()?.userId !== user.id) update({ userId: user.id, email: user.email ?? '', team: null })
+      if (readAccount()?.userId !== user.id) update(accountFor(user))
     },
     [update],
   )
@@ -108,7 +139,20 @@ export function AccountGate({
         client={client}
         userId={account.userId}
         email={account.email}
-        onTeam={(team) => update({ ...account, team })}
+        name={account.name}
+        onTeam={(team, name) => update({ ...account, team, name: name ?? account.name })}
+        onSignOut={signOut}
+      />
+    )
+  }
+
+  // Everyone in a team is someone on its staff list, so they need a name first.
+  if (!account.name.trim()) {
+    return (
+      <YourNamePage
+        client={client}
+        email={account.email}
+        onSaved={(name) => update({ ...account, name })}
         onSignOut={signOut}
       />
     )
@@ -141,9 +185,9 @@ function TeamSession({
   legacy: LocalStorageRepository
   onSignOut: () => Promise<void>
   onLeft: () => void
-  children: (repository: DataRepository) => ReactNode
+  children: (repository: DataRepository, person: SignedInPerson) => ReactNode
 }) {
-  const { userId, email, team } = account
+  const { userId, email, name, team } = account
   const [repository] = useState(() => new SupabaseRepository(client, team.id, userId, legacy))
 
   useEffect(() => {
@@ -157,6 +201,7 @@ function TeamSession({
   const actions = useMemo<Omit<SyncApi, 'status'>>(
     () => ({
       email,
+      name,
       team,
       syncNow: () => repository.syncNow(),
       async signInAgain(password) {
@@ -174,13 +219,19 @@ function TeamSession({
         await repository.clearLocal()
         onLeft()
       },
+      async deleteAccount() {
+        const { error } = await client.rpc('delete_my_account')
+        if (error) throw error
+        await repository.clearLocal()
+        await onSignOut()
+      },
     }),
-    [client, repository, userId, email, team, onSignOut, onLeft],
+    [client, repository, userId, email, name, team, onSignOut, onLeft],
   )
   const api = useMemo<SyncApi>(() => ({ ...actions, status }), [actions, status])
 
   // Status changes every sync; the app itself only needs rendering once.
-  const app = useMemo(() => children(repository), [children, repository])
+  const app = useMemo(() => children(repository, { userId, name }), [children, repository, userId, name])
 
   return <SyncContext value={api}>{app}</SyncContext>
 }

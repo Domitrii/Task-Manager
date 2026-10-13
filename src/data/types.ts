@@ -28,6 +28,8 @@ export interface StaffMember {
   active: boolean
   /** Optional 4-digit sign-off PIN. Not security — it mirrors real venue practice. */
   pin?: string
+  /** The account this person signs in with, when the team syncs. Absent for people without one. */
+  userId?: string
 }
 
 /* -------------------------------------------------------------------------- */

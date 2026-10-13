@@ -19,6 +19,7 @@ const EMAIL_TAKEN = 'That email is already taken. Sign in instead, or use “For
  */
 export function SignInPage({ client }: { client: SupabaseClient }) {
   const [mode, setMode] = useState<Mode>('sign-in')
+  const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
@@ -50,7 +51,10 @@ export function SignInPage({ client }: { client: SupabaseClient }) {
 
     const credentials = { email: address, password }
     const { data, error: failure } = signingUp
-      ? await client.auth.signUp({ ...credentials, options: { emailRedirectTo: window.location.origin } })
+      ? await client.auth.signUp({
+          ...credentials,
+          options: { emailRedirectTo: window.location.origin, data: { full_name: name.trim() || undefined } },
+        })
       : await client.auth.signInWithPassword(credentials)
     setBusy(false)
     if (failure) setError(authErrorMessage(failure))
@@ -136,6 +140,17 @@ export function SignInPage({ client }: { client: SupabaseClient }) {
       />
 
       <div className="space-y-5">
+        {signingUp ? (
+          <Field label="Your name" hint="Optional. You can change it later in your profile." htmlFor="account-name">
+            <TextInput
+              id="account-name"
+              autoComplete="name"
+              className={INPUT}
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+            />
+          </Field>
+        ) : null}
         <Field label="Email" htmlFor="account-email">
           <TextInput
             id="account-email"

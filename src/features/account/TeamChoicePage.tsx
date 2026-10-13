@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button'
 import { Field, TextInput } from '@/components/ui/Field'
 import { FocusFrame, FocusHeading } from '@/components/layout/FocusFrame'
 import { Choice } from '@/components/shared/Choice'
+import { saveProfileName } from './sync'
 import { createTeam, findMyTeam, joinTeam, teamErrorMessage, type TeamRef } from './team'
 
 const INPUT = 'h-12 text-base'
@@ -14,26 +15,33 @@ type Step = 'checking' | 'offline' | 'choose' | 'join' | 'create'
 /**
  * After signing in, before the app: an account that's already in a team goes
  * straight through; one that isn't joins a team with its code, or creates one.
+ * Either way they say who they are, since the team's records are signed with it.
  */
 export function TeamChoicePage({
   client,
   userId,
   email,
+  name: savedName,
   onTeam,
   onSignOut,
 }: {
   client: SupabaseClient
   userId: string
   email: string
-  onTeam: (team: TeamRef) => void
+  /** From their profile; empty if they haven't given one. */
+  name: string
+  /** `name` is set when they gave a new one on the way in. */
+  onTeam: (team: TeamRef, name?: string) => void
   onSignOut: () => Promise<void>
 }) {
   const [step, setStep] = useState<Step>('checking')
   const [attempt, setAttempt] = useState(0)
   const [code, setCode] = useState('')
   const [name, setName] = useState('')
+  const [yourName, setYourName] = useState(savedName)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [nameError, setNameError] = useState<string | null>(null)
 
   const found = useEffectEvent((team: TeamRef | null) => {
     if (team) onTeam(team)
@@ -54,6 +62,7 @@ export function TeamChoicePage({
   function go(next: Step) {
     setStep(next)
     setError(null)
+    setNameError(null)
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -61,8 +70,20 @@ export function TeamChoicePage({
     if (busy) return
     setBusy(true)
     setError(null)
+    setNameError(null)
+    const person = yourName.trim()
+    const renamed = person !== savedName.trim()
+    if (renamed) {
+      const failure = await saveProfileName(client, person)
+      if (failure) {
+        setNameError(failure)
+        setBusy(false)
+        return
+      }
+    }
     try {
-      onTeam(step === 'join' ? await joinTeam(client, code) : await createTeam(client, name))
+      const team = step === 'join' ? await joinTeam(client, code) : await createTeam(client, name)
+      onTeam(team, renamed ? person : undefined)
     } catch (failure) {
       setError(teamErrorMessage(failure))
       setBusy(false)
@@ -163,7 +184,7 @@ export function TeamChoicePage({
           type="submit"
           variant="primary"
           size="lg"
-          disabled={busy || !(joining ? code.trim() : name.trim())}
+          disabled={busy || !yourName.trim() || !(joining ? code.trim() : name.trim())}
           className="w-full sm:w-auto sm:min-w-44"
         >
           {joining ? (busy ? 'Joining…' : 'Join team') : busy ? 'Creating…' : 'Create team'}
@@ -178,38 +199,59 @@ export function TeamChoicePage({
             : 'Usually the venue’s name. Once it’s created, share the code from Settings → Team so others can join.'
         }
       />
-      {joining ? (
-        <Field label="Team code" htmlFor="team-code" error={error ?? undefined}>
+      <div className="space-y-5">
+        <Field
+          label="Your name"
+          required
+          hint="Your team sees it on everything you record."
+          htmlFor="team-your-name"
+          error={nameError ?? undefined}
+        >
           <TextInput
-            id="team-code"
-            autoFocus
-            autoComplete="off"
-            autoCapitalize="characters"
-            autoCorrect="off"
-            spellCheck={false}
-            maxLength={12}
-            placeholder="ABCD-2345"
-            className={`${INPUT} font-mono tracking-widest uppercase`}
-            value={code}
-            invalid={Boolean(error)}
-            onChange={(event) => setCode(event.target.value)}
-          />
-        </Field>
-      ) : (
-        <Field label="Team name" htmlFor="team-name" error={error ?? undefined}>
-          <TextInput
-            id="team-name"
-            autoFocus
-            autoComplete="organization"
+            id="team-your-name"
+            autoFocus={!savedName.trim()}
+            autoComplete="name"
             maxLength={80}
-            placeholder="e.g. The Fox & Hound"
+            placeholder="e.g. Sam Patel"
             className={INPUT}
-            value={name}
-            invalid={Boolean(error)}
-            onChange={(event) => setName(event.target.value)}
+            value={yourName}
+            invalid={Boolean(nameError)}
+            onChange={(event) => setYourName(event.target.value)}
           />
         </Field>
-      )}
+        {joining ? (
+          <Field label="Team code" htmlFor="team-code" error={error ?? undefined}>
+            <TextInput
+              id="team-code"
+              autoFocus={Boolean(savedName.trim())}
+              autoComplete="off"
+              autoCapitalize="characters"
+              autoCorrect="off"
+              spellCheck={false}
+              maxLength={12}
+              placeholder="ABCD-2345"
+              className={`${INPUT} font-mono tracking-widest uppercase`}
+              value={code}
+              invalid={Boolean(error)}
+              onChange={(event) => setCode(event.target.value)}
+            />
+          </Field>
+        ) : (
+          <Field label="Team name" htmlFor="team-name" error={error ?? undefined}>
+            <TextInput
+              id="team-name"
+              autoFocus={Boolean(savedName.trim())}
+              autoComplete="organization"
+              maxLength={80}
+              placeholder="e.g. The Fox & Hound"
+              className={INPUT}
+              value={name}
+              invalid={Boolean(error)}
+              onChange={(event) => setName(event.target.value)}
+            />
+          </Field>
+        )}
+      </div>
     </FocusFrame>
   )
 }

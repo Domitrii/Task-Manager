@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
-import { Link, useLocation } from 'react-router-dom'
-import { Check, ChevronDown, LogOut, Moon, Plus, Search, Sun } from 'lucide-react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Check, ChevronDown, CircleUser, LogOut, Moon, Plus, Search, Sun } from 'lucide-react'
 import { ALL_NAV_ITEMS } from '@/config/navigation'
 import { useStore } from '@/data/store'
 import { useTheme } from '@/lib/theme'
@@ -18,6 +18,7 @@ export function Topbar({ onOpenSearch, onOpenLog }: { onOpenSearch: () => void; 
   const { data, activeStaff, setActiveStaffId } = useStore()
   const { theme, toggle } = useTheme()
   const sync = useSync()
+  const navigate = useNavigate()
   const [signingOut, setSigningOut] = useState(false)
 
   const pageTitle = useMemo(() => {
@@ -64,7 +65,7 @@ export function Topbar({ onOpenSearch, onOpenLog }: { onOpenSearch: () => void; 
           <button
             type="button"
             onClick={toggleMenu}
-            aria-label={`Signed in as ${activeStaff.name}. Switch person`}
+            aria-label={sync ? `Signed in as ${activeStaff.name}` : `Signed in as ${activeStaff.name}. Switch person`}
             className="hover:bg-surface-muted flex items-center gap-2 rounded-full p-1 transition-colors lg:rounded-lg lg:pr-2"
           >
             <Avatar person={activeStaff} size="sm" />
@@ -78,24 +79,29 @@ export function Topbar({ onOpenSearch, onOpenLog }: { onOpenSearch: () => void; 
       >
         {({ close }) => (
           <>
-            <MenuLabel>Who's using this device?</MenuLabel>
-            {activeStaffList.map((person) => (
-              <MenuItem
-                key={person.id}
-                icon={<Avatar person={person} size="xs" />}
-                onClick={() => {
-                  setActiveStaffId(person.id)
-                  close()
-                }}
-                description={titleCase(person.role)}
-              >
-                <span className="flex items-center gap-2">
-                  {person.name}
-                  {person.id === activeStaff.id ? <Check className="text-brand-600 size-3.5" /> : null}
-                </span>
-              </MenuItem>
-            ))}
-            <MenuDivider />
+            {/* Signed in, everyone is on their own account; only a device-only venue passes the device round. */}
+            {sync ? null : (
+              <>
+                <MenuLabel>Who's using this device?</MenuLabel>
+                {activeStaffList.map((person) => (
+                  <MenuItem
+                    key={person.id}
+                    icon={<Avatar person={person} size="xs" />}
+                    onClick={() => {
+                      setActiveStaffId(person.id)
+                      close()
+                    }}
+                    description={titleCase(person.role)}
+                  >
+                    <span className="flex items-center gap-2">
+                      {person.name}
+                      {person.id === activeStaff.id ? <Check className="text-brand-600 size-3.5" /> : null}
+                    </span>
+                  </MenuItem>
+                ))}
+                <MenuDivider />
+              </>
+            )}
             <MenuItem
               icon={theme === 'dark' ? <Sun className="size-4" /> : <Moon className="size-4" />}
               onClick={() => {
@@ -111,6 +117,15 @@ export function Topbar({ onOpenSearch, onOpenLog }: { onOpenSearch: () => void; 
                 <MenuLabel>
                   {sync.email} · {sync.team.name}
                 </MenuLabel>
+                <MenuItem
+                  icon={<CircleUser className="size-4" />}
+                  onClick={() => {
+                    navigate('/profile')
+                    close()
+                  }}
+                >
+                  Your profile
+                </MenuItem>
                 <MenuItem
                   icon={<LogOut className="size-4" />}
                   onClick={() => {

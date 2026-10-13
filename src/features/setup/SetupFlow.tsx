@@ -60,7 +60,8 @@ const INPUT = 'h-12 text-base'
 
 export function SetupFlow() {
   const { data, hasData, replaceData } = useStore()
-  const synced = useSync() !== null
+  const sync = useSync()
+  const synced = sync !== null
   const navigate = useNavigate()
   const toast = useToast()
   const [params, setParams] = useSearchParams()
@@ -68,7 +69,8 @@ export function SetupFlow() {
   const [answers, setAnswers] = useState<SetupAnswers>(() => ({
     venueName: '',
     address: '',
-    managerName: '',
+    // Signed in, the person setting up is already named on their account.
+    managerName: sync?.name ?? '',
     ...packDefaults(SETUP_PACKS[0]),
     excluded: [],
   }))
@@ -185,7 +187,7 @@ export function SetupFlow() {
     >
       <FocusHeading title={STEPS[step - 1].title} description={STEPS[step - 1].description} />
 
-      {step === 1 ? <VenueStep answers={answers} onChange={update} /> : null}
+      {step === 1 ? <VenueStep answers={answers} onChange={update} askName={!sync?.name} /> : null}
       {step === 2 ? <PackStep value={packId} onChange={choosePack} /> : null}
       {step === 3 && pack ? <KitchenStep pack={pack} answers={answers} onChange={update} /> : null}
       {step === 4 && pack && plan ? (
@@ -223,7 +225,16 @@ export function SetupFlow() {
 
 /* -------------------------------------------------------------------------- */
 
-function VenueStep({ answers, onChange }: { answers: SetupAnswers; onChange: (changes: Partial<SetupAnswers>) => void }) {
+function VenueStep({
+  answers,
+  onChange,
+  askName,
+}: {
+  answers: SetupAnswers
+  onChange: (changes: Partial<SetupAnswers>) => void
+  /** False when signed in: their account already says who they are. */
+  askName: boolean
+}) {
   return (
     <div className="space-y-5">
       <Field label="Venue name" required htmlFor="setup-venue">
@@ -248,21 +259,23 @@ function VenueStep({ answers, onChange }: { answers: SetupAnswers; onChange: (ch
           onChange={(event) => onChange({ address: event.target.value })}
         />
       </Field>
-      <Field
-        label="Your name"
-        required
-        hint="You’ll be added as the manager. Add the rest of the team later in Settings."
-        htmlFor="setup-manager"
-      >
-        <TextInput
-          id="setup-manager"
-          className={INPUT}
-          autoComplete="name"
-          enterKeyHint="next"
-          value={answers.managerName}
-          onChange={(event) => onChange({ managerName: event.target.value })}
-        />
-      </Field>
+      {askName ? (
+        <Field
+          label="Your name"
+          required
+          hint="You’ll be added as the manager. Add the rest of the team later in Settings."
+          htmlFor="setup-manager"
+        >
+          <TextInput
+            id="setup-manager"
+            className={INPUT}
+            autoComplete="name"
+            enterKeyHint="next"
+            value={answers.managerName}
+            onChange={(event) => onChange({ managerName: event.target.value })}
+          />
+        </Field>
+      ) : null}
     </div>
   )
 }

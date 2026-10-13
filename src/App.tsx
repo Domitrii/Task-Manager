@@ -30,6 +30,9 @@ const TemplateEditorRoutes = lazy(async () => ({
   default: (await import('@/features/templates/TemplateEditorRoutes')).TemplateEditorRoutes,
 }))
 // Setup runs once per venue, so its packs stay out of the everyday bundle.
+const ProfilePage = lazy(async () => ({
+  default: (await import('@/features/account/ProfilePage')).ProfilePage,
+}))
 const SetupPage = lazy(async () => ({
   default: (await import('@/features/setup/SetupPage')).SetupPage,
 }))
@@ -113,6 +116,14 @@ export function App() {
           element={
             <Suspense fallback={<PageSkeleton />}>
               <SettingsPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="profile"
+          element={
+            <Suspense fallback={<PageSkeleton />}>
+              <ProfilePage />
             </Suspense>
           }
         />
