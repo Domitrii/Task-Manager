@@ -3,7 +3,7 @@ import { isAuthRetryableFetchError, type AuthError, type SupabaseClient, type Us
 import { CloudAlert, CloudCheck, CloudOff, CloudUpload, type LucideIcon } from 'lucide-react'
 import type { SyncStatus } from '@/data/supabaseRepository'
 import { formatAgo } from '@/lib/format'
-import type { TeamDetails, TeamRef } from './team'
+import type { JoinRequest, TeamDetails, TeamPerson, TeamRef } from './team'
 
 export interface SyncApi {
   /** The person signed in on this device. */
@@ -23,6 +23,16 @@ export interface SyncApi {
   newJoinCode: () => Promise<string>
   /** Takes this account out of the team and back to choosing one. */
   leaveTeam: () => Promise<void>
+  /** People asking to join. Only the owner and anyone they allow see them; empty for everyone else. */
+  joinRequests: JoinRequest[]
+  /** Looks for new requests now rather than at the next regular check. */
+  refreshJoinRequests: () => void
+  approveJoin: (userId: string) => Promise<void>
+  declineJoin: (userId: string) => Promise<void>
+  /** Everyone with an account in the team. Needs a connection. */
+  teamPeople: () => Promise<TeamPerson[]>
+  /** Lets someone approve new people, or stops them. Owners only. */
+  setApprover: (userId: string, allowed: boolean) => Promise<void>
   /** Deletes this person's account for good; the team and its records stay. Needs a connection. */
   deleteAccount: () => Promise<void>
 }

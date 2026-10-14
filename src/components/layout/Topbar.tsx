@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { Check, ChevronDown, CircleUser, LogOut, Moon, Plus, Search, Sun } from 'lucide-react'
+import { Check, ChevronDown, CircleUser, LogOut, Moon, Plus, Search, Sun, UserPlus } from 'lucide-react'
 import { ALL_NAV_ITEMS } from '@/config/navigation'
+import { staffRoleLabel } from '@/data/staffRoles'
 import { useStore } from '@/data/store'
 import { useTheme } from '@/lib/theme'
-import { titleCase } from '@/lib/utils'
 import { Avatar } from '@/components/ui/Avatar'
 import { Button } from '@/components/ui/Button'
 import { Menu, MenuDivider, MenuItem, MenuLabel } from '@/components/ui/Menu'
@@ -52,6 +52,20 @@ export function Topbar({ onOpenSearch, onOpenLog }: { onOpenSearch: () => void; 
         </button>
       </div>
 
+      {/* Only the owner, and anyone they allow, ever has requests to answer. */}
+      {sync && sync.joinRequests.length > 0 ? (
+        <Link
+          to="/settings?tab=staff"
+          aria-label={`${sync.joinRequests.length} asking to join ${sync.team.name}`}
+          className="text-ink-muted hover:bg-surface-muted hover:text-ink flex h-9 items-center gap-1.5 rounded-lg px-2 text-[13px] font-medium transition-colors"
+        >
+          <UserPlus className="size-4.5" />
+          <span className="bg-brand-600 min-w-5 rounded-full px-1.5 text-center text-[11px] leading-4 font-bold text-white tabular-nums">
+            {sync.joinRequests.length}
+          </span>
+          <span className="hidden xl:inline">Asking to join</span>
+        </Link>
+      ) : null}
       <SyncIndicator />
 
       <Button variant="primary" onClick={onOpenLog} className="hidden gap-1.5 pr-5 lg:inline-flex">
@@ -71,7 +85,7 @@ export function Topbar({ onOpenSearch, onOpenLog }: { onOpenSearch: () => void; 
             <Avatar person={activeStaff} size="sm" />
             <span className="hidden text-left leading-tight lg:block">
               <span className="text-ink block text-[13px] font-semibold">{activeStaff.name}</span>
-              <span className="text-ink-muted block text-xs">{titleCase(activeStaff.role)}</span>
+              <span className="text-ink-muted block text-xs">{staffRoleLabel(activeStaff)}</span>
             </span>
             <ChevronDown className="text-ink-subtle hidden size-3.5 lg:block" />
           </button>
@@ -91,7 +105,7 @@ export function Topbar({ onOpenSearch, onOpenLog }: { onOpenSearch: () => void; 
                       setActiveStaffId(person.id)
                       close()
                     }}
-                    description={titleCase(person.role)}
+                    description={staffRoleLabel(person)}
                   >
                     <span className="flex items-center gap-2">
                       {person.name}

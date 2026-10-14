@@ -8,8 +8,18 @@ import { emailChangeConfirmed, emailLinkMessage, openedFromPasswordReset, signOu
 import { NewPasswordPage } from './NewPasswordPage'
 import { SignInPage } from './SignInPage'
 import { authErrorMessage, profileName, SyncContext, type SyncApi } from './sync'
-import { fetchTeamDetails, leaveTeam, regenerateJoinCode, type TeamRef } from './team'
+import {
+  approveJoinRequest,
+  declineJoinRequest,
+  fetchTeamDetails,
+  fetchTeamPeople,
+  leaveTeam,
+  regenerateJoinCode,
+  setApprover,
+  type TeamRef,
+} from './team'
 import { TeamChoicePage } from './TeamChoicePage'
+import { useJoinRequests } from './useJoinRequests'
 import { YourNamePage } from './YourNamePage'
 
 interface Account {
@@ -19,6 +29,8 @@ interface Account {
   name: string
   /** Null until this account has joined or created a team. */
   team: TeamRef | null
+  /** The role they were let in with, which their staff record starts from. */
+  jobRole?: string
 }
 
 function accountFor(user: User): Account {
@@ -140,7 +152,9 @@ export function AccountGate({
         userId={account.userId}
         email={account.email}
         name={account.name}
-        onTeam={(team, name) => update({ ...account, team, name: name ?? account.name })}
+        onTeam={(team, joined) =>
+          update({ ...account, team, name: joined.name ?? account.name, jobRole: joined.jobRole ?? undefined })
+        }
         onSignOut={signOut}
       />
     )
@@ -187,8 +201,9 @@ function TeamSession({
   onLeft: () => void
   children: (repository: DataRepository, person: SignedInPerson) => ReactNode
 }) {
-  const { userId, email, name, team } = account
+  const { userId, email, name, team, jobRole } = account
   const [repository] = useState(() => new SupabaseRepository(client, team.id, userId, legacy))
+  const { requests: joinRequests, refresh: refreshJoins, drop: dropJoin } = useJoinRequests(client, team)
 
   useEffect(() => {
     repository.start()
@@ -197,8 +212,9 @@ function TeamSession({
 
   const status = useSyncExternalStore(repository.subscribeStatus, repository.getStatus)
 
-  // Kept apart from the status, which changes every sync, so these stay the same functions.
-  const actions = useMemo<Omit<SyncApi, 'status'>>(
+  // Kept apart from the status, which changes every sync, and the requests, which change every check,
+  // so these stay the same functions.
+  const actions = useMemo<Omit<SyncApi, 'status' | 'joinRequests'>>(
     () => ({
       email,
       name,
@@ -225,13 +241,41 @@ function TeamSession({
         await repository.clearLocal()
         await onSignOut()
       },
+      refreshJoinRequests: refreshJoins,
+      async approveJoin(person) {
+        try {
+          await approveJoinRequest(client, team, person)
+          dropJoin(person)
+        } catch (error) {
+          // Usually someone else got there first: show the list as it is now.
+          refreshJoins()
+          throw error
+        }
+      },
+      async declineJoin(person) {
+        try {
+          await declineJoinRequest(client, team, person)
+          dropJoin(person)
+        } catch (error) {
+          refreshJoins()
+          throw error
+        }
+      },
+      teamPeople: () => fetchTeamPeople(client, team),
+      setApprover: (person, allowed) => setApprover(client, team, person, allowed),
     }),
-    [client, repository, userId, email, name, team, onSignOut, onLeft],
+    [client, repository, userId, email, name, team, onSignOut, onLeft, refreshJoins, dropJoin],
   )
-  const api = useMemo<SyncApi>(() => ({ ...actions, status }), [actions, status])
+  const api = useMemo<SyncApi>(
+    () => ({ ...actions, status, joinRequests }),
+    [actions, status, joinRequests],
+  )
 
   // Status changes every sync; the app itself only needs rendering once.
-  const app = useMemo(() => children(repository, { userId, name }), [children, repository, userId, name])
+  const app = useMemo(
+    () => children(repository, { userId, name, jobRole }),
+    [children, repository, userId, name, jobRole],
+  )
 
   return <SyncContext value={api}>{app}</SyncContext>
 }

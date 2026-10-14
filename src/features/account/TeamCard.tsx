@@ -5,10 +5,14 @@ import { Card, CardBody, CardHeader } from '@/components/ui/Card'
 import { Modal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
 import { SignOutModal } from './AccountCard'
+import { ApproverList, JoinRequestList } from './JoinRequests'
 import { useSync, type SyncApi } from './sync'
 import { formatJoinCode, teamErrorMessage, type TeamDetails } from './team'
 
-/** Settings → Team: the code others join with. Renders nothing when the app runs device-only. */
+/**
+ * Settings → Team: the code others join with, and the requests it brings in
+ * for whoever can approve them. Renders nothing when the app runs device-only.
+ */
 export function TeamCard() {
   const sync = useSync()
   const toast = useToast()
@@ -16,6 +20,8 @@ export function TeamCard() {
   const [failure, setFailure] = useState<string | null>(null)
   const [attempt, setAttempt] = useState(0)
   const [dialog, setDialog] = useState<'new-code' | 'leave' | 'sign-out' | null>(null)
+  /** Changes when someone is let in, so the owner's list of people picks them up. */
+  const [joined, setJoined] = useState(0)
 
   const teamDetails = sync?.teamDetails
   useEffect(() => {
@@ -46,9 +52,13 @@ export function TeamCard() {
     <Card>
       <CardHeader
         title={sync.team.name}
-        description={`Signed in as ${sync.email}${details?.role === 'owner' ? ' · Owner' : ''}`}
+        description={`Signed in as ${sync.email}${
+          details?.role === 'owner' ? ' · Owner' : details?.canApprove ? ' · Can let people in' : ''
+        }`}
       />
-      <CardBody className="space-y-4">
+      <CardBody className="space-y-5">
+        <JoinRequestList sync={sync} onApproved={() => setJoined((count) => count + 1)} />
+
         <div>
           <p className="text-ink-muted text-[13px] font-medium">Team code</p>
           {details ? (
@@ -79,7 +89,11 @@ export function TeamCard() {
           )}
           <p className="text-ink-muted mt-2 text-[13px]">
             New people create an account, choose <span className="text-ink font-medium">Join a team</span> and
-            enter this code. They’ll see all of {sync.team.name}’s records.
+            enter this code.{' '}
+            {details?.canApprove
+              ? 'Their request shows up here for you to approve.'
+              : 'The owner, or someone they allow, then lets them in.'}{' '}
+            Once in, they see all of {sync.team.name}’s records.
           </p>
         </div>
 
@@ -99,6 +113,8 @@ export function TeamCard() {
             Leave team
           </Button>
         </div>
+
+        {details?.role === 'owner' ? <ApproverList sync={sync} version={joined} /> : null}
       </CardBody>
 
       {dialog === 'new-code' ? (

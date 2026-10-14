@@ -21,6 +21,7 @@ import { deriveDeliveryStatus, evaluateTemperature } from '@/lib/compliance'
 import { createId, initialsOf } from '@/lib/utils'
 import { applyChanges, EMPTY_DATA, type RecordChange } from './records'
 import type { DataRepository } from './repository'
+import { staffRoleFromText } from './staffRoles'
 import type {
   AppData,
   ChecklistRun,
@@ -207,6 +208,8 @@ export interface SignedInPerson {
   userId: string
   /** From their profile; the team screens make sure there is one. */
   name: string
+  /** The role they asked to join with, for their first staff record. Absent for whoever created the team. */
+  jobRole?: string
 }
 
 /** The same on every device, so two of someone's devices never add them twice. */
@@ -282,6 +285,7 @@ export function StoreProvider({
   // over, so their past entries stay theirs; anyone else is added.
   const userId = person?.userId
   const personName = person?.name.trim() ?? ''
+  const jobRole = person?.jobRole
   const lastName = useRef(personName)
   useEffect(() => {
     if (!userId || !hasData || !personName) return
@@ -301,9 +305,16 @@ export function StoreProvider({
       type: 'staff/save',
       member: unclaimed
         ? { ...unclaimed, userId, active: true }
-        : { id: staffIdFor(userId), userId, name: personName, role: 'chef', initials: initialsOf(personName), active: true },
+        : {
+            id: staffIdFor(userId),
+            userId,
+            name: personName,
+            ...staffRoleFromText(jobRole),
+            initials: initialsOf(personName),
+            active: true,
+          },
     })
-  }, [userId, personName, hasData, data.staff])
+  }, [userId, personName, jobRole, hasData, data.staff])
 
   const setActiveStaffId = useCallback((id: ID) => {
     setActiveStaffIdState(id)

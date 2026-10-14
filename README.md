@@ -36,9 +36,11 @@ signed in to it shares them, and recording carries on offline (see *Sync and off
    add `http://localhost:5173` as a redirect URL, so sign-up confirmation links come back to the app.
 4. On Vercel, add the same two `VITE_` variables to the project and redeploy.
 
-After signing in, someone without a team either creates one or joins with its 8-character code,
-which everyone in the team can find under **Settings → Team** (the owner can replace it). A new
-team offers setup as before; if the device already has records from before sync, they are
+After signing in, someone without a team either creates one or asks to join one with its
+8-character code, which everyone in the team can find under **Settings → Team** (the owner can
+replace it). Asking to join means choosing a role (or writing one in under *Other*) and waiting:
+the owner, or anyone the owner allows under **Settings → Team**, approves or declines the request
+there, and the top bar shows when someone is waiting. A new team offers setup as before; if the device already has records from before sync, they are
 uploaded into the team instead. Accounts from before teams became teams of their own, with the
 same records.
 
@@ -117,8 +119,9 @@ keeps in entry order (equipment, staff, suppliers) carry a sort key, so a new de
 the same order.
 
 Each person has their own account and belongs to one team; records belong to the team.
-Row-level security limits each account to its team's records, and creating, joining, leaving and
-changing the code go through database functions that check the code and the person's role. Staff
+Row-level security limits each account to its team's records, and creating, asking to join,
+approving, leaving and changing the code go through database functions that check the code and
+the person's role. Someone waiting for approval can't see any of the team's records. Staff
 still pick who is recording from the top bar, so a shared kitchen tablet can stay signed in to one
 account. A device remembers its account and team after the first sign-in and opens straight into
 them, including offline, until it is signed out from the profile menu or **Settings → Team**.

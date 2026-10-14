@@ -17,12 +17,14 @@ export type ISODate = string
 /* People                                                                      */
 /* -------------------------------------------------------------------------- */
 
-export type StaffRole = 'manager' | 'head_chef' | 'chef' | 'supervisor' | 'front_of_house' | 'kp'
+export type StaffRole = 'manager' | 'head_chef' | 'chef' | 'supervisor' | 'front_of_house' | 'kp' | 'other'
 
 export interface StaffMember {
   id: ID
   name: string
   role: StaffRole
+  /** What they do, in their own words, when `role` is `other`. */
+  customRole?: string
   /** Shown in avatars when no photo is available. */
   initials: string
   active: boolean

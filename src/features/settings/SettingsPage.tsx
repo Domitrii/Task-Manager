@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Database, Pencil, Plug, Plus, QrCode, RotateCcw, Store, Trash2 } from 'lucide-react'
 import { CATEGORY_LABELS } from '@/config/navigation'
+import { STAFF_ROLE_LABELS, STAFF_ROLES, staffRoleLabel } from '@/data/staffRoles'
 import { useStore } from '@/data/store'
 import type {
   CheckPeriod,
@@ -33,7 +34,6 @@ const TABS = ['venue', 'equipment', 'staff', 'suppliers', 'templates', 'data'] a
 type TabKey = (typeof TABS)[number]
 
 const CATEGORY_VALUES = Object.keys(CATEGORY_LABELS) as MonitoredCategory[]
-const ROLES: StaffRole[] = ['manager', 'head_chef', 'chef', 'supervisor', 'front_of_house', 'kp']
 
 export function SettingsPage() {
   // In the address, so a link (or Back from editing a template) can open a tab.
@@ -41,6 +41,7 @@ export function SettingsPage() {
   const requested = params.get('tab')
   const tab: TabKey = TABS.find((key) => key === requested) ?? 'venue'
   const setTab = (next: TabKey) => setParams(next === 'venue' ? {} : { tab: next }, { replace: true })
+  const waiting = useSync()?.joinRequests.length ?? 0
 
   return (
     <div className="space-y-5">
@@ -55,7 +56,7 @@ export function SettingsPage() {
         options={[
           { value: 'venue', label: 'Venue' },
           { value: 'equipment', label: 'Equipment' },
-          { value: 'staff', label: 'Team' },
+          { value: 'staff', label: 'Team', count: waiting > 0 ? waiting : undefined },
           { value: 'suppliers', label: 'Suppliers' },
           { value: 'templates', label: 'Templates' },
           { value: 'data', label: 'Data' },
@@ -472,7 +473,7 @@ function StaffTab() {
               <Avatar person={person} />
               <div className="min-w-0 flex-1">
                 <p className="text-ink text-sm font-medium">{person.name}</p>
-                <p className="text-ink-muted text-xs">{titleCase(person.role)}</p>
+                <p className="text-ink-muted text-xs">{staffRoleLabel(person)}</p>
               </div>
               {person.active ? <Badge tone="pass">Active</Badge> : <Badge tone="neutral">Inactive</Badge>}
               <Toggle
@@ -511,7 +512,8 @@ function StaffModal({ member, onClose }: { member?: StaffMember; onClose: () => 
   function handleSave() {
     if (!draft.name.trim()) return
     const name = draft.name.trim()
-    saveStaff({ ...draft, name, initials: draft.initials.trim() || initialsOf(name) })
+    const customRole = draft.role === 'other' ? draft.customRole?.trim() || undefined : undefined
+    saveStaff({ ...draft, name, customRole, initials: draft.initials.trim() || initialsOf(name) })
     toast.success(member ? 'Team member updated' : 'Team member added', name)
     onClose()
   }
@@ -548,13 +550,24 @@ function StaffModal({ member, onClose }: { member?: StaffMember; onClose: () => 
             value={draft.role}
             onChange={(event) => setDraft({ ...draft, role: event.target.value as StaffRole })}
           >
-            {ROLES.map((role) => (
+            {[...STAFF_ROLES, 'other' as const].map((role) => (
               <option key={role} value={role}>
-                {titleCase(role)}
+                {STAFF_ROLE_LABELS[role]}
               </option>
             ))}
           </Select>
         </Field>
+        {draft.role === 'other' ? (
+          <Field label="What they do" htmlFor="staff-custom-role">
+            <TextInput
+              id="staff-custom-role"
+              maxLength={60}
+              placeholder="e.g. Sous chef"
+              value={draft.customRole ?? ''}
+              onChange={(event) => setDraft({ ...draft, customRole: event.target.value })}
+            />
+          </Field>
+        ) : null}
         <Field label="Sign-off PIN" hint="Optional — 4 digits" htmlFor="staff-pin">
           <TextInput
             id="staff-pin"
