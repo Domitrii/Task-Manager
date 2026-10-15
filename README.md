@@ -112,6 +112,20 @@ save to IndexedDB first, so logging works with no signal at all, then:
   `remote/apply` action, merged over whatever is on screen.
 - **Resolves conflicts per record, last write wins.** Most records are only ever added, so in
   practice devices only contend when two people edit the same task, issue or setting at once.
+- **Uploads photos last.** Every temperature reading needs a photo of the probe or display. It is
+  shrunk, stamped with the item, time and person (`lib/photo.ts`), kept in IndexedDB and uploaded
+  to the private `reading-photos` Storage bucket after the records, counting as waiting to sync
+  until then. Uploaded photos stay on the device for a week; after that they are downloaded when
+  someone opens one.
+
+Whoever entered a reading can change it for 20 minutes; after that only the owner and the
+managers the owner chooses (**Settings → Team**) can, and each change keeps what the reading said
+before, who changed it and why. The server enforces this too: a trigger on `records` turns away
+late changes to someone else's or an old reading (with 10 minutes' slack for a slow connection),
+and Storage only lets managers and whoever took a photo look at it. Managers get
+**Temperatures → Review**, every reading for a day or week with its photo and the checks nobody
+did; everyone else sees today's checks and their own readings. Without accounts, anyone down as a
+Manager on the staff list counts as a manager.
 
 Deletes are tombstones, so a device that was offline still hears about them. `updated_at` is set by
 the server, not the device, so a phone with the wrong clock can't hide its changes. Lists the app

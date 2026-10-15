@@ -20,6 +20,8 @@ export interface TeamDetails {
   role: TeamRole
   /** Whether they can let new people in. Owners always can. */
   canApprove: boolean
+  /** Whether they see every reading and can change any of them. Owners always do. */
+  isManager: boolean
 }
 
 /** The team an account is in, and the role it asked to join with (null for whoever created the team). */
@@ -53,6 +55,7 @@ export interface TeamPerson {
   jobRole: string | null
   role: TeamRole
   canApprove: boolean
+  isManager: boolean
 }
 
 interface TeamRow {
@@ -132,13 +135,21 @@ export async function declineJoinRequest(client: SupabaseClient, team: TeamRef, 
 export async function fetchTeamPeople(client: SupabaseClient, team: TeamRef): Promise<TeamPerson[]> {
   const { data, error } = await client.rpc('team_people', { team: team.id })
   if (error) throw error
-  const rows = data as { user_id: string; name: string; job_role: string | null; role: TeamRole; can_approve: boolean }[]
+  const rows = data as {
+    user_id: string
+    name: string
+    job_role: string | null
+    role: TeamRole
+    can_approve: boolean
+    is_manager: boolean
+  }[]
   return rows.map((row) => ({
     userId: row.user_id,
     name: row.name,
     jobRole: row.job_role,
     role: row.role,
     canApprove: row.can_approve,
+    isManager: row.is_manager,
   }))
 }
 
@@ -148,20 +159,36 @@ export async function setApprover(client: SupabaseClient, team: TeamRef, userId:
   if (error) throw error
 }
 
+/** Makes someone a manager, or stops them being one. Owners only. */
+export async function setManager(client: SupabaseClient, team: TeamRef, userId: string, allowed: boolean): Promise<void> {
+  const { error } = await client.rpc('set_team_manager', { team: team.id, person: userId, allowed })
+  if (error) throw error
+}
+
+/** What this account may do in its team. Throws when offline. */
+export async function fetchMyAccess(
+  client: SupabaseClient,
+  team: TeamRef,
+  userId: string,
+): Promise<Omit<TeamDetails, 'code'>> {
+  const { data, error } = await client
+    .from('team_members')
+    .select('role, can_approve, is_manager')
+    .eq('team_id', team.id)
+    .eq('user_id', userId)
+    .single<{ role: TeamRole; can_approve: boolean; is_manager: boolean }>()
+  if (error) throw error
+  const owner = data.role === 'owner'
+  return { role: data.role, canApprove: owner || data.can_approve, isManager: owner || data.is_manager }
+}
+
 export async function fetchTeamDetails(client: SupabaseClient, team: TeamRef, userId: string): Promise<TeamDetails> {
-  const [teamResult, memberResult] = await Promise.all([
+  const [teamResult, access] = await Promise.all([
     client.from('teams').select('join_code').eq('id', team.id).single<{ join_code: string }>(),
-    client
-      .from('team_members')
-      .select('role, can_approve')
-      .eq('team_id', team.id)
-      .eq('user_id', userId)
-      .single<{ role: TeamRole; can_approve: boolean }>(),
+    fetchMyAccess(client, team, userId),
   ])
   if (teamResult.error) throw teamResult.error
-  if (memberResult.error) throw memberResult.error
-  const { role, can_approve } = memberResult.data
-  return { code: teamResult.data.join_code, role, canApprove: role === 'owner' || can_approve }
+  return { code: teamResult.data.join_code, ...access }
 }
 
 export async function regenerateJoinCode(client: SupabaseClient, team: TeamRef): Promise<string> {

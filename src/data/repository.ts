@@ -7,9 +7,11 @@
  * sensor feed, supplier EDI) means implementing this interface and changing the
  * construction in `main.tsx` — no UI changes.
  */
+import { createId } from '@/lib/utils'
+import { keepPhoto, photoBlob } from './photoCache'
 import { withMissingLists, type RecordChange } from './records'
 import { createSeedData } from './seed'
-import type { AppData } from './types'
+import type { AppData, ID } from './types'
 
 export type RemoteListener = (changes: RecordChange[]) => void
 
@@ -27,6 +29,18 @@ export interface DataRepository {
    * repository shared between devices has anything to report.
    */
   subscribe?(listener: RemoteListener): () => void
+  /**
+   * Keeps a photo that proves a record, such as a temperature reading, and
+   * returns where it's kept, to save on the record. Storing (and uploading)
+   * carries on in the background, so saving the record never waits for it.
+   */
+  addPhoto(recordId: ID, photo: Blob): string
+  /**
+   * The photo at `path` as an object URL (revoke it when done with), or null
+   * when it can't be shown: not uploaded yet from another device, offline, or
+   * not this person's to see.
+   */
+  photoUrl(path: string): Promise<string | null>
 }
 
 const STORAGE_KEY = 'mise.appdata.v1'
@@ -78,6 +92,23 @@ export class LocalStorageRepository implements DataRepository {
     return data
   }
 
+  /** Photos taken since this page opened, so they show before they've reached storage. */
+  private readonly photos = new Map<string, Blob>()
+
+  addPhoto(recordId: ID, photo: Blob): string {
+    const path = `device/${recordId}-${createId('ph')}.jpg`
+    this.photos.set(path, photo)
+    keepPhoto(path, photo, true).catch(() => {
+      // Storage unavailable: it shows for as long as this page stays open.
+    })
+    return path
+  }
+
+  async photoUrl(path: string): Promise<string | null> {
+    const blob = this.photos.get(path) ?? (await photoBlob(path).catch(() => undefined))
+    return blob ? URL.createObjectURL(blob) : null
+  }
+
   /** Forgets everything stored on this device. */
   async clear(): Promise<void> {
     try {
@@ -107,5 +138,18 @@ export class InMemoryRepository implements DataRepository {
   async reset(): Promise<AppData> {
     this.data = createSeedData(new Date())
     return this.data
+  }
+
+  private readonly photos = new Map<string, Blob>()
+
+  addPhoto(recordId: ID, photo: Blob): string {
+    const path = `memory/${recordId}-${createId('ph')}.jpg`
+    this.photos.set(path, photo)
+    return path
+  }
+
+  async photoUrl(path: string): Promise<string | null> {
+    const blob = this.photos.get(path)
+    return blob ? URL.createObjectURL(blob) : null
   }
 }

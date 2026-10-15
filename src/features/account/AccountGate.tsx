@@ -16,10 +16,12 @@ import {
   leaveTeam,
   regenerateJoinCode,
   setApprover,
+  setManager,
   type TeamRef,
 } from './team'
 import { TeamChoicePage } from './TeamChoicePage'
 import { useJoinRequests } from './useJoinRequests'
+import { useManager } from './useManager'
 import { YourNamePage } from './YourNamePage'
 
 interface Account {
@@ -204,6 +206,7 @@ function TeamSession({
   const { userId, email, name, team, jobRole } = account
   const [repository] = useState(() => new SupabaseRepository(client, team.id, userId, legacy))
   const { requests: joinRequests, refresh: refreshJoins, drop: dropJoin } = useJoinRequests(client, team)
+  const isManager = useManager(client, team, userId)
 
   useEffect(() => {
     repository.start()
@@ -212,9 +215,9 @@ function TeamSession({
 
   const status = useSyncExternalStore(repository.subscribeStatus, repository.getStatus)
 
-  // Kept apart from the status, which changes every sync, and the requests, which change every check,
-  // so these stay the same functions.
-  const actions = useMemo<Omit<SyncApi, 'status' | 'joinRequests'>>(
+  // Kept apart from the status, which changes every sync, and the requests and
+  // manager flag, which change on every check, so these stay the same functions.
+  const actions = useMemo<Omit<SyncApi, 'status' | 'joinRequests' | 'isManager'>>(
     () => ({
       email,
       name,
@@ -263,12 +266,13 @@ function TeamSession({
       },
       teamPeople: () => fetchTeamPeople(client, team),
       setApprover: (person, allowed) => setApprover(client, team, person, allowed),
+      setManager: (person, allowed) => setManager(client, team, person, allowed),
     }),
     [client, repository, userId, email, name, team, onSignOut, onLeft, refreshJoins, dropJoin],
   )
   const api = useMemo<SyncApi>(
-    () => ({ ...actions, status, joinRequests }),
-    [actions, status, joinRequests],
+    () => ({ ...actions, status, joinRequests, isManager }),
+    [actions, status, joinRequests, isManager],
   )
 
   // Status changes every sync; the app itself only needs rendering once.

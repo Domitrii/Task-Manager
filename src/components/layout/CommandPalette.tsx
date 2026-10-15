@@ -2,9 +2,10 @@ import { useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { CornerDownLeft, Flame, ListChecks, Package, Search, ShieldAlert, Thermometer } from 'lucide-react'
-import { ALL_NAV_ITEMS } from '@/config/navigation'
+import { ALL_NAV_ITEMS, REVIEW_NAV } from '@/config/navigation'
 import { useStore } from '@/data/store'
 import { cn } from '@/lib/utils'
+import { useReadingAccess } from '@/features/temperatures/access'
 import type { QuickEntryApi } from './quickEntry'
 
 interface Command {
@@ -20,6 +21,7 @@ interface Command {
 export function CommandPalette({ onClose, api }: { onClose: () => void; api: QuickEntryApi }) {
   const navigate = useNavigate()
   const { data } = useStore()
+  const { manager } = useReadingAccess()
   // Mounted only while open, so it always starts from an empty query.
   const [query, setQuery] = useState('')
   const [cursor, setCursor] = useState(0)
@@ -64,7 +66,8 @@ export function CommandPalette({ onClose, api }: { onClose: () => void; api: Qui
       },
     ]
 
-    const pages: Command[] = ALL_NAV_ITEMS.map((item) => ({
+    // The review is for managers; anyone else would only be told so.
+    const pages: Command[] = ALL_NAV_ITEMS.filter((item) => manager || item !== REVIEW_NAV).map((item) => ({
       id: `page-${item.to}`,
       label: item.label,
       group: 'Go to',
@@ -87,7 +90,7 @@ export function CommandPalette({ onClose, api }: { onClose: () => void; api: Qui
       }))
 
     return [...actions, ...pages, ...equipment]
-  }, [api, data.items, navigate, onClose])
+  }, [api, data.items, navigate, onClose, manager])
 
   const results = useMemo(() => {
     const needle = query.trim().toLowerCase()

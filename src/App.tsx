@@ -36,6 +36,10 @@ const ProfilePage = lazy(async () => ({
 const SetupPage = lazy(async () => ({
   default: (await import('@/features/setup/SetupPage')).SetupPage,
 }))
+// Managers only, and not every day.
+const TemperatureReviewPage = lazy(async () => ({
+  default: (await import('@/features/temperatures/ReviewPage')).TemperatureReviewPage,
+}))
 import {
   AllTemperaturesPage,
   CookingTemperaturesPage,
@@ -78,6 +82,14 @@ export function App() {
             element={
               <Suspense fallback={<PageSkeleton />}>
                 <QrLabelsPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="review"
+            element={
+              <Suspense fallback={<PageSkeleton />}>
+                <TemperatureReviewPage />
               </Suspense>
             }
           />

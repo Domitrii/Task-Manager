@@ -17,7 +17,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { deriveDeliveryStatus, evaluateTemperature } from '@/lib/compliance'
+import { deriveDeliveryStatus, evaluateTemperature, periodForTime } from '@/lib/compliance'
 import { createId, initialsOf } from '@/lib/utils'
 import { applyChanges, EMPTY_DATA, type RecordChange } from './records'
 import type { DataRepository } from './repository'
@@ -36,6 +36,7 @@ import type {
   Task,
   TaskTemplate,
   TemperatureLog,
+  TemperatureLogFields,
   VenueSettings,
 } from './types'
 
@@ -43,6 +44,7 @@ type Action =
   | { type: 'hydrate'; data: AppData }
   | { type: 'remote/apply'; changes: RecordChange[] }
   | { type: 'temperature/add'; log: TemperatureLog }
+  | { type: 'temperature/update'; log: TemperatureLog }
   | { type: 'temperature/delete'; id: ID }
   | { type: 'delivery/add'; delivery: Delivery }
   | { type: 'delivery/update'; delivery: Delivery }
@@ -90,6 +92,13 @@ function reducer(state: AppData, action: Action): AppData {
         temperatureLogs: [action.log, ...state.temperatureLogs].sort((a, b) =>
           b.recordedAt.localeCompare(a.recordedAt),
         ),
+      }
+    case 'temperature/update':
+      return {
+        ...state,
+        temperatureLogs: state.temperatureLogs
+          .map((log) => (log.id === action.log.id ? action.log : log))
+          .sort((a, b) => b.recordedAt.localeCompare(a.recordedAt)),
       }
     case 'temperature/delete':
       return { ...state, temperatureLogs: state.temperatureLogs.filter((log) => log.id !== action.id) }
@@ -158,8 +167,22 @@ export interface RecordTemperatureInput {
   period?: TemperatureLog['period']
   correctiveAction?: string
   notes?: string
+  /** Proof of the reading: a photo of the probe or display showing it. */
+  photo: Blob
   /** Raise a tracked food-safety issue alongside a failed reading. */
   raiseIssue?: boolean
+}
+
+export interface EditTemperatureInput {
+  temperature: number
+  recordedAt: string
+  recordedBy: ID
+  correctiveAction?: string
+  notes?: string
+  /** A new photo, replacing the old one. The old one stays in the reading's history. */
+  photo?: Blob
+  /** Why it changed, for whoever looks back at it. */
+  reason?: string
 }
 
 interface StoreValue {
@@ -173,7 +196,11 @@ interface StoreValue {
   setActiveStaffId: (id: ID) => void
   activeStaff: StaffMember
   recordTemperature: (input: RecordTemperatureInput) => TemperatureLog
+  /** Changes a saved reading, keeping what it said before. Who may is up to the screens (and the server). */
+  editTemperature: (id: ID, changes: EditTemperatureInput) => void
   deleteTemperature: (id: ID) => void
+  /** A record's photo as an object URL to revoke when done, or null when it can't be shown. */
+  photoUrl: (path: string) => Promise<string | null>
   saveDelivery: (delivery: Delivery, isNew: boolean) => void
   deleteDelivery: (id: ID) => void
   recordChecklistRun: (run: ChecklistRun) => void
@@ -321,6 +348,9 @@ export function StoreProvider({
     localStorage.setItem(ACTIVE_STAFF_KEY, id)
   }, [])
 
+  // Its own function, so showing a photo doesn't fetch it again every time the data changes.
+  const photoUrl = useCallback((path: string) => repository.photoUrl(path), [repository])
+
   const value = useMemo<StoreValue>(() => {
     const activeStaff: StaffMember = userId
       ? (data.staff.find((member) => member.userId === userId) ?? {
@@ -335,6 +365,24 @@ export function StoreProvider({
       : (data.staff.find((member) => member.id === activeStaffId) ??
         data.staff[0] ?? { id: '', name: 'Unassigned', role: 'chef', initials: '—', active: true })
 
+    /** An out-of-range reading becomes an issue, so it gets followed up. */
+    function raiseReadingIssue(item: MonitoredItem, log: TemperatureLog) {
+      dispatch({
+        type: 'issue/add',
+        issue: {
+          id: createId('is'),
+          title: `${item.name} out of range at ${log.temperature}°C`,
+          description: log.correctiveAction ?? 'Reading outside the safe range. Corrective action required.',
+          severity: item.category === 'cooking' || item.category === 'hot_holding' ? 'high' : 'medium',
+          status: 'open',
+          source: 'temperature',
+          raisedAt: log.recordedAt,
+          raisedBy: log.recordedBy,
+          linkedRecordId: log.id,
+        },
+      })
+    }
+
     return {
       data,
       ready,
@@ -346,8 +394,9 @@ export function StoreProvider({
       recordTemperature(input) {
         const item = data.items.find((entry) => entry.id === input.itemId)
         const outcome = item ? evaluateTemperature(item, input.temperature) : 'pass'
+        const id = createId('tl')
         const log: TemperatureLog = {
-          id: createId('tl'),
+          id,
           itemId: input.itemId,
           temperature: input.temperature,
           recordedAt: input.recordedAt,
@@ -356,29 +405,54 @@ export function StoreProvider({
           period: input.period,
           correctiveAction: input.correctiveAction,
           notes: input.notes,
+          enteredAt: new Date().toISOString(),
+          enteredBy: activeStaff.id,
+          photo: repository.addPhoto(id, input.photo),
         }
         dispatch({ type: 'temperature/add', log })
-
-        if (outcome === 'fail' && input.raiseIssue !== false && item) {
-          dispatch({
-            type: 'issue/add',
-            issue: {
-              id: createId('is'),
-              title: `${item.name} out of range at ${input.temperature}°C`,
-              description:
-                input.correctiveAction ??
-                'Reading outside the safe range. Corrective action required.',
-              severity: item.category === 'cooking' || item.category === 'hot_holding' ? 'high' : 'medium',
-              status: 'open',
-              source: 'temperature',
-              raisedAt: input.recordedAt,
-              raisedBy: input.recordedBy,
-              linkedRecordId: log.id,
-            },
-          })
-        }
+        if (outcome === 'fail' && input.raiseIssue !== false && item) raiseReadingIssue(item, log)
         return log
       },
+
+      editTemperature(id, input) {
+        const log = data.temperatureLogs.find((entry) => entry.id === id)
+        if (!log) return
+        const item = data.items.find((entry) => entry.id === log.itemId)
+        const outcome = item ? evaluateTemperature(item, input.temperature) : log.outcome
+        const before: TemperatureLogFields = {
+          temperature: log.temperature,
+          outcome: log.outcome,
+          recordedAt: log.recordedAt,
+          recordedBy: log.recordedBy,
+          correctiveAction: log.correctiveAction,
+          notes: log.notes,
+          photo: log.photo,
+        }
+        const next: TemperatureLog = {
+          ...log,
+          temperature: input.temperature,
+          outcome,
+          recordedAt: input.recordedAt,
+          recordedBy: input.recordedBy,
+          // A new time can put it in a different check.
+          period:
+            input.recordedAt !== log.recordedAt && item && item.requiredChecks.length > 0
+              ? periodForTime(data.settings.periods, new Date(input.recordedAt))
+              : log.period,
+          correctiveAction: input.correctiveAction,
+          notes: input.notes,
+          photo: input.photo ? repository.addPhoto(id, input.photo) : log.photo,
+          edits: [
+            ...(log.edits ?? []),
+            { at: new Date().toISOString(), by: activeStaff.id, reason: input.reason, before },
+          ],
+        }
+        dispatch({ type: 'temperature/update', log: next })
+        // Out of range now when it wasn't before: it needs following up like any other.
+        if (outcome === 'fail' && log.outcome !== 'fail' && item) raiseReadingIssue(item, next)
+      },
+
+      photoUrl,
 
       deleteTemperature(id) {
         dispatch({ type: 'temperature/delete', id })
@@ -520,7 +594,7 @@ export function StoreProvider({
         applyData(userId ? keepAccounts(next, data.staff, { userId, name: personName }) : next)
       },
     }
-  }, [data, ready, hasData, activeStaffId, setActiveStaffId, repository, applyData, userId, personName])
+  }, [data, ready, hasData, activeStaffId, setActiveStaffId, repository, applyData, userId, personName, photoUrl])
 
   return <StoreContext value={value}>{children}</StoreContext>
 }

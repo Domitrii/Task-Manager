@@ -1,5 +1,6 @@
 import {
   CalendarCheck,
+  CalendarRange,
   ClipboardCheck,
   ClipboardList,
   Flame,
@@ -53,6 +54,9 @@ export const SETTINGS_NAV: NavItem = { label: 'Settings', to: '/settings', icon:
 /** Ready-made sets of tasks to add to someone's list. Lives under More on phones. */
 export const TEMPLATES_NAV: NavItem = { label: 'Task templates', to: '/templates', icon: LayoutTemplate }
 
+/** Every reading for a day or week, with photos, for managers. Reached from Temperatures. */
+export const REVIEW_NAV: NavItem = { label: 'Temperature review', to: '/temperatures/review', icon: CalendarRange }
+
 /** Printable QR labels for equipment. Reached from Temperatures and Settings. */
 export const QR_LABELS_NAV: NavItem = { label: 'QR labels', to: '/temperatures/labels', icon: QrCode }
 
@@ -79,6 +83,7 @@ export const ALL_NAV_ITEMS: NavItem[] = [
   TEMPLATES_NAV,
   SETTINGS_NAV,
   QR_LABELS_NAV,
+  REVIEW_NAV,
   ...TEMPERATURE_VIEWS.slice(1),
   ...CHECKLIST_VIEWS.slice(1).map((view) => ({ ...view, label: `${view.label} checklists` })),
 ]

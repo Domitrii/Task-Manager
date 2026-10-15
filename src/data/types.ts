@@ -88,6 +88,32 @@ export interface TemperatureLog {
   /** Required whenever `outcome` is `fail`. */
   correctiveAction?: string
   notes?: string
+  /**
+   * When it was entered on the device, which is later than `recordedAt` when
+   * the time was set by hand. Whoever entered it can change it for a while
+   * after this; then only managers can. Absent on readings from before photos.
+   */
+  enteredAt?: ISODateTime
+  /** Who entered it, which isn't always who it was recorded for. */
+  enteredBy?: ID
+  /** Where the photo proving the reading is kept; see `DataRepository.addPhoto`. */
+  photo?: string
+  /** Every change after it was first saved, oldest first. */
+  edits?: TemperatureLogEdit[]
+}
+
+/** The parts of a reading that can be changed after it's saved. */
+export type TemperatureLogFields = Pick<
+  TemperatureLog,
+  'temperature' | 'outcome' | 'recordedAt' | 'recordedBy' | 'correctiveAction' | 'notes' | 'photo'
+>
+
+export interface TemperatureLogEdit {
+  at: ISODateTime
+  by: ID
+  reason?: string
+  /** The reading as it was before this change. */
+  before: TemperatureLogFields
 }
 
 /* -------------------------------------------------------------------------- */

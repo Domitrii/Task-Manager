@@ -1,6 +1,7 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { useParams } from 'react-router-dom'
-import { AlertTriangle, CheckCircle2, MapPin, Plus, PowerOff, ScanLine, X } from 'lucide-react'
+import { format } from 'date-fns'
+import { AlertTriangle, CheckCircle2, MapPin, Pencil, Plus, PowerOff, ScanLine, X } from 'lucide-react'
 import { CATEGORY_ICONS, CATEGORY_LABELS } from '@/config/navigation'
 import { staffName } from '@/data/selectors'
 import { useStore } from '@/data/store'
@@ -13,8 +14,11 @@ import { Button, ButtonLink } from '@/components/ui/Button'
 import { Field, Select, Textarea } from '@/components/ui/Field'
 import { FocusFrame } from '@/components/layout/FocusFrame'
 import { LogoMark } from '@/components/layout/Logo'
+import { canEditReading, editableUntil, useReadingAccess } from '@/features/temperatures/access'
+import { EditReadingModal } from '@/features/temperatures/EditReadingModal'
 import { readingValue, startsNegative } from '@/features/temperatures/reading'
 import { CorrectiveActionField, ReadingInput, VerdictBanner } from '@/features/temperatures/ReadingFields'
+import { PhotoProofField, ReadingPhoto } from '@/features/temperatures/ReadingPhoto'
 
 /**
  * Where a QR label lands. Built for one hand at the fridge door: what this is,
@@ -61,6 +65,7 @@ function ScanLogger({ item }: { item: MonitoredItem }) {
   const [showNotes, setShowNotes] = useState(false)
   const [staffId, setStaffId] = useState(activeStaffId)
   const [changingStaff, setChangingStaff] = useState(false)
+  const [photo, setPhoto] = useState<Blob | null>(null)
   const [submitted, setSubmitted] = useState(false)
   const [saved, setSaved] = useState<TemperatureLog | null>(null)
 
@@ -79,7 +84,7 @@ function ScanLogger({ item }: { item: MonitoredItem }) {
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setSubmitted(true)
-    if (!hasValue || staffId === '') return
+    if (!hasValue || staffId === '' || !photo) return
     if (needsCorrectiveAction) {
       document.getElementById('scan-action')?.focus()
       return
@@ -94,6 +99,7 @@ function ScanLogger({ item }: { item: MonitoredItem }) {
       period: scheduled ? periodForTime(data.settings.periods, at) : undefined,
       correctiveAction: correctiveAction.trim() || undefined,
       notes: notes.trim() || undefined,
+      photo,
     })
     setSaved(log)
     window.scrollTo({ top: 0 })
@@ -105,6 +111,7 @@ function ScanLogger({ item }: { item: MonitoredItem }) {
     setCorrectiveAction('')
     setNotes('')
     setShowNotes(false)
+    setPhoto(null)
     setSubmitted(false)
     setSaved(null)
     window.scrollTo({ top: 0 })
@@ -121,7 +128,7 @@ function ScanLogger({ item }: { item: MonitoredItem }) {
           type="submit"
           variant="primary"
           size="lg"
-          disabled={!hasValue || staffId === ''}
+          disabled={!hasValue || staffId === '' || !photo}
           className="h-14 w-full text-base sm:w-auto sm:min-w-52"
         >
           Save reading
@@ -148,6 +155,15 @@ function ScanLogger({ item }: { item: MonitoredItem }) {
         </div>
 
         <VerdictBanner item={item} temperature={parsed} outcome={outcome} />
+
+        <PhotoProofField
+          id="scan-photo"
+          size="lg"
+          photo={photo}
+          onChange={setPhoto}
+          caption={() => `${item.name} · ${format(new Date(), 'd MMM yyyy, HH:mm')} · ${staffName(data, staffId)}`}
+          error={submitted && !photo ? 'Take a photo of the reading before saving.' : undefined}
+        />
 
         {outcome === 'fail' ? (
           <CorrectiveActionField
@@ -257,14 +273,20 @@ function ItemHeading({ item }: { item: MonitoredItem }) {
 
 function SavedReading({
   item,
-  log,
+  log: saved,
   onLogAnother,
 }: {
   item: MonitoredItem
   log: TemperatureLog
   onLogAnother: () => void
 }) {
+  const now = useNow()
   const { data } = useStore()
+  const access = useReadingAccess()
+  const [editing, setEditing] = useState(false)
+  // As it is now, should it have been changed since.
+  const log = data.temperatureLogs.find((entry) => entry.id === saved.id) ?? saved
+  const until = editableUntil(log)
   const pass = log.outcome === 'pass'
   const checkWindow = data.settings.periods.find((entry) => entry.period === log.period)
   const check =
@@ -321,7 +343,24 @@ function SavedReading({
         <Detail label="Time">{formatTime(log.recordedAt)}</Detail>
         <Detail label="Checked by">{staffName(data, log.recordedBy)}</Detail>
         {log.correctiveAction ? <Detail label="Action taken">{log.correctiveAction}</Detail> : null}
+        <Detail label="Photo">
+          <ReadingPhoto log={log} size="lg" />
+        </Detail>
       </dl>
+
+      {canEditReading(log, access, now) ? (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-ink-muted text-sm">
+            {access.manager || !until ? 'Got something wrong?' : `Got something wrong? You can change it until ${format(until, 'HH:mm')}.`}
+          </p>
+          <Button onClick={() => setEditing(true)} className="gap-1.5">
+            <Pencil className="size-4" />
+            Change reading
+          </Button>
+        </div>
+      ) : null}
+
+      {editing ? <EditReadingModal log={log} onClose={() => setEditing(false)} /> : null}
     </FocusFrame>
   )
 }

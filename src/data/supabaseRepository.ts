@@ -11,6 +11,10 @@
  * Conflicts resolve per record, last write wins. Most records are only ever
  * added (readings, deliveries, checklist runs), so two devices only really
  * contend when they edit the same task, issue or setting at the same time.
+ *
+ * Photos (proof of a reading) go the same way: kept in IndexedDB the moment
+ * they're taken, uploaded to Storage once the records are up, and counted as
+ * waiting to sync until then.
  */
 import { isAuthRetryableFetchError, type RealtimeChannel, type SupabaseClient } from '@supabase/supabase-js'
 import { createStore, del, delMany, entries, get, set, setMany, type UseStore } from 'idb-keyval'
@@ -28,14 +32,16 @@ import {
   type SortKeys,
 } from './records'
 import type { DataRepository, LocalStorageRepository, RemoteListener } from './repository'
+import { forgetPhotos, keepPhoto, markUploaded, photoBlob, photosUnder } from './photoCache'
 import { createSeedData } from './seed'
-import type { AppData } from './types'
+import type { AppData, ID } from './types'
+import { createId } from '@/lib/utils'
 
 export type SyncState = 'synced' | 'syncing' | 'offline' | 'signed-out' | 'error'
 
 export interface SyncStatus {
   state: SyncState
-  /** Changes made on this device that haven't reached the server yet. */
+  /** Changes and photos from this device that haven't reached the server yet. */
   pending: number
   lastSyncedAt: string | null
   /** What went wrong, while `state` is `error`. */
@@ -80,6 +86,10 @@ const PUSH_DELAY_MS = 800
 const POLL_MS = 60_000
 /** How often a device's first load retries while it waits for a connection. */
 const RETRY_MS = 10_000
+/** See `supabase/migrations/20261015000000_reading_proof.sql`. */
+const PHOTO_BUCKET = 'reading-photos'
+/** Uploaded photos stay on the device that has them this long, then come from the server when needed. */
+const PHOTO_KEEP_MS = 7 * 24 * 60 * 60 * 1000
 
 // Two databases: each venue as last seen, and every unsent change under its own
 // key, so two tabs queueing changes offline can't overwrite each other's.
@@ -111,6 +121,10 @@ export class SupabaseRepository implements DataRepository {
   private cursor: string | null = null
   private readonly outbox = new Map<string, Pending>()
   private seq = 0
+  /** Photos taken on this device that aren't in Storage yet. */
+  private readonly photoQueue = new Set<string>()
+  /** Photos taken since this page opened, so they show before they've reached IndexedDB. */
+  private readonly freshPhotos = new Map<string, Blob>()
 
   private loading: Promise<AppData | null> | null = null
   private loaded = false
@@ -178,6 +192,28 @@ export class SupabaseRepository implements DataRepository {
     return () => this.remoteListeners.delete(listener)
   }
 
+  addPhoto(recordId: ID, photo: Blob): string {
+    // The team's folder, which is what Storage checks before taking it.
+    const path = `${this.teamId}/${recordId}-${createId('ph')}.jpg`
+    this.freshPhotos.set(path, photo)
+    this.photoQueue.add(path)
+    this.setStatus({})
+    void this.persist(() => keepPhoto(path, photo, false))
+    if (this.loaded) this.requestSync(PUSH_DELAY_MS)
+    return path
+  }
+
+  async photoUrl(path: string): Promise<string | null> {
+    const kept = this.freshPhotos.get(path) ?? (await photoBlob(path).catch(() => undefined))
+    if (kept) return URL.createObjectURL(kept)
+    if (!navigator.onLine) return null
+    // Storage says no to anyone who isn't a manager or the person who took it.
+    const { data, error } = await this.client.storage.from(PHOTO_BUCKET).download(path)
+    if (error) return null
+    void this.persist(() => keepPhoto(path, data, true))
+    return URL.createObjectURL(data)
+  }
+
   /* Status, for the UI --------------------------------------------------- */
 
   readonly getStatus = (): SyncStatus => this.status
@@ -239,10 +275,12 @@ export class SupabaseRepository implements DataRepository {
     this.channel = null
   }
 
-  /** Forgets this team's records on this device, unsent changes included. For signing out or leaving. */
+  /** Forgets this team's records and photos on this device, unsent ones included. For signing out or leaving. */
   async clearLocal(): Promise<void> {
     this.stop()
     this.outbox.clear()
+    this.photoQueue.clear()
+    this.freshPhotos.clear()
     await this.persist(async () => {
       const queued = await this.readOutbox()
       await delMany(
@@ -250,6 +288,7 @@ export class SupabaseRepository implements DataRepository {
         idb().outbox,
       )
       await del(this.teamId, idb().cache)
+      await forgetPhotos((await photosUnder(this.photoPrefix())).map(([path]) => path))
       await this.legacy?.clear()
     })
   }
@@ -262,6 +301,7 @@ export class SupabaseRepository implements DataRepository {
     try {
       cached = await get<CachedVenue>(this.teamId, idb().cache)
       queued = await this.readOutbox()
+      await this.restorePhotos()
     } catch {
       // Storage is blocked (some private modes): start from the server instead.
     }
@@ -370,6 +410,8 @@ export class SupabaseRepository implements DataRepository {
         await this.adoptOrphans()
         await this.push()
         await this.pull()
+        // After the records, so a photo that won't go up never holds them back.
+        await this.pushPhotos()
         this.setStatus({ state: 'synced', lastSyncedAt: new Date().toISOString() })
       } while (this.again && this.active)
     } catch (error) {
@@ -430,6 +472,38 @@ export class SupabaseRepository implements DataRepository {
     }
   }
 
+  private async pushPhotos(): Promise<void> {
+    for (const path of [...this.photoQueue]) {
+      const blob = this.freshPhotos.get(path) ?? (await photoBlob(path))
+      if (blob) {
+        const { error } = await this.client.storage
+          .from(PHOTO_BUCKET)
+          .upload(path, blob, { contentType: 'image/jpeg', upsert: false })
+        // Already there means an earlier upload landed but its answer didn't.
+        const already = error && (('statusCode' in error && error.statusCode === '409') || /already exists/i.test(error.message))
+        if (error && !already) throw error
+      }
+      this.photoQueue.delete(path)
+      this.setStatus({})
+      await this.persist(() => markUploaded(path))
+    }
+  }
+
+  /** Queues this team's photos that never went up, and clears out old copies of ones that did. */
+  private async restorePhotos(): Promise<void> {
+    const kept = await photosUnder(this.photoPrefix())
+    const stale: string[] = []
+    for (const [path, info] of kept) {
+      if (!info.uploaded) this.photoQueue.add(path)
+      else if (Date.now() - Date.parse(info.savedAt) > PHOTO_KEEP_MS) stale.push(path)
+    }
+    await forgetPhotos(stale)
+  }
+
+  private photoPrefix(): string {
+    return `${this.teamId}/`
+  }
+
   private async pull(): Promise<void> {
     const since = this.cursor && new Date(Date.parse(this.cursor) - PULL_OVERLAP_MS).toISOString()
     const rows = await this.fetch(since)
@@ -475,7 +549,7 @@ export class SupabaseRepository implements DataRepository {
   }
 
   private setStatus(changes: Partial<SyncStatus>): void {
-    const next: SyncStatus = { ...this.status, ...changes, pending: this.outbox.size }
+    const next: SyncStatus = { ...this.status, ...changes, pending: this.outbox.size + this.photoQueue.size }
     if (next.state !== 'error') next.error = null
     const unchanged = (Object.keys(next) as (keyof SyncStatus)[]).every((key) => next[key] === this.status[key])
     if (unchanged) return

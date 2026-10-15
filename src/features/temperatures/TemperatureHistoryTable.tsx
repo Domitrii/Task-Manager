@@ -1,21 +1,37 @@
 import { useMemo, useState } from 'react'
-import { History } from 'lucide-react'
+import { History, Pencil } from 'lucide-react'
 import { staffName } from '@/data/selectors'
 import { useStore } from '@/data/store'
 import type { MonitoredItem, TemperatureLog } from '@/data/types'
 import { formatRange } from '@/lib/compliance'
 import { formatDateShort, formatTemp, formatTime } from '@/lib/format'
+import { useNow } from '@/lib/useNow'
 import { titleCase } from '@/lib/utils'
 import { Avatar } from '@/components/ui/Avatar'
-import { Button } from '@/components/ui/Button'
+import { Badge } from '@/components/ui/Badge'
+import { Button, IconButton } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Select } from '@/components/ui/Field'
 import { Td, Th, TableWrap, Tr } from '@/components/ui/Table'
 import { OutcomeBadge } from '@/components/shared/StatusBadge'
+import { canEditReading, useReadingAccess } from './access'
+import { EditReadingModal } from './EditReadingModal'
+import { ReadingPhoto } from './ReadingPhoto'
 
 type OutcomeFilter = 'all' | 'pass' | 'fail'
 
-/** Full audit trail for a section. This is what gets shown to an inspector. */
+/** Entered this long after the time it's down for, it says so: the time was set by hand. */
+const LATE_ENTRY_MS = 15 * 60_000
+
+function enteredLate(log: TemperatureLog): boolean {
+  return Boolean(log.enteredAt) && Date.parse(log.enteredAt ?? '') - Date.parse(log.recordedAt) > LATE_ENTRY_MS
+}
+
+/**
+ * Full audit trail for a section. This is what gets shown to an inspector:
+ * each reading with its photo, when it was really entered, and whether it has
+ * been changed since. Readings can be changed from here by whoever may.
+ */
 export function TemperatureHistoryTable({
   logs,
   items,
@@ -23,7 +39,11 @@ export function TemperatureHistoryTable({
   logs: TemperatureLog[]
   items: MonitoredItem[]
 }) {
+  const now = useNow()
   const { data } = useStore()
+  const access = useReadingAccess()
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const editing = editingId ? data.temperatureLogs.find((log) => log.id === editingId) : undefined
   const [itemFilter, setItemFilter] = useState('all')
   const [outcomeFilter, setOutcomeFilter] = useState<OutcomeFilter>('all')
   const [limit, setLimit] = useState(25)
@@ -86,6 +106,10 @@ export function TemperatureHistoryTable({
                 <Th>Status</Th>
                 <Th>Check</Th>
                 <Th>Recorded by</Th>
+                <Th>Photo</Th>
+                <Th>
+                  <span className="sr-only">Change</span>
+                </Th>
               </tr>
             </thead>
             <tbody>
@@ -101,6 +125,11 @@ export function TemperatureHistoryTable({
                       <span className="text-ink-subtle tabular text-[11px]">
                         {formatTime(log.recordedAt)}
                       </span>
+                      {log.enteredAt && enteredLate(log) ? (
+                        <span className="text-warn-700 dark:text-warn-500 block text-[11px]">
+                          Entered {formatDateShort(log.enteredAt)}, {formatTime(log.enteredAt)}
+                        </span>
+                      ) : null}
                     </Td>
                     <Td>
                       <span className="text-ink block text-[13px] font-medium">{item?.name ?? '—'}</span>
@@ -118,6 +147,11 @@ export function TemperatureHistoryTable({
                       >
                         {formatTemp(log.temperature)}
                       </span>
+                      {log.edits?.length ? (
+                        <Badge tone="info" className="ml-1.5">
+                          Changed
+                        </Badge>
+                      ) : null}
                     </Td>
                     <Td>
                       <OutcomeBadge outcome={log.outcome} />
@@ -140,11 +174,23 @@ export function TemperatureHistoryTable({
                         </span>
                       </span>
                     </Td>
+                    <Td>
+                      <ReadingPhoto log={log} />
+                    </Td>
+                    <Td>
+                      {canEditReading(log, access, now) ? (
+                        <IconButton label="Change this reading" size="sm" onClick={() => setEditingId(log.id)}>
+                          <Pencil className="size-4" />
+                        </IconButton>
+                      ) : null}
+                    </Td>
                   </Tr>
                 )
               })}
             </tbody>
           </TableWrap>
+
+          {editing ? <EditReadingModal log={editing} onClose={() => setEditingId(null)} /> : null}
 
           {filtered.length > visible.length ? (
             <div className="border-line border-t px-4 py-3 text-center sm:px-5">

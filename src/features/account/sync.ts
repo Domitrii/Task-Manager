@@ -33,6 +33,13 @@ export interface SyncApi {
   teamPeople: () => Promise<TeamPerson[]>
   /** Lets someone approve new people, or stops them. Owners only. */
   setApprover: (userId: string, allowed: boolean) => Promise<void>
+  /**
+   * The owner, or someone they've made a manager: sees every reading and its
+   * photo, and can change any reading at any time. As last known, so it holds offline.
+   */
+  isManager: boolean
+  /** Makes someone a manager, or stops them being one. Owners only. */
+  setManager: (userId: string, allowed: boolean) => Promise<void>
   /** Deletes this person's account for good; the team and its records stay. Needs a connection. */
   deleteAccount: () => Promise<void>
 }

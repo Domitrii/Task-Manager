@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { AlertTriangle, CheckCircle2, Clock, QrCode, Thermometer } from 'lucide-react'
+import { AlertTriangle, CalendarRange, CheckCircle2, Clock, QrCode, Thermometer } from 'lucide-react'
 import {
   selectItemsForCategories,
   selectLatestReadings,
@@ -19,6 +19,7 @@ import { Tabs } from '@/components/ui/Tabs'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { StatCard } from '@/components/shared/StatCard'
 import { ViewChips } from '@/components/shared/ViewChips'
+import { isOwnReading, useReadingAccess } from './access'
 import { CheckMatrix } from './CheckMatrix'
 import { EquipmentStatusGrid } from './EquipmentStatusGrid'
 import { TemperatureHistoryTable } from './TemperatureHistoryTable'
@@ -53,6 +54,7 @@ export function TemperatureSection({
   const now = useNow()
   const { data } = useStore()
   const quickEntry = useQuickEntry()
+  const access = useReadingAccess()
   const [tab, setTab] = useState<TabKey>('today')
 
   const scope = categories ?? ALL_CATEGORIES
@@ -72,6 +74,11 @@ export function TemperatureSection({
   )
   const failedToday = todayLogs.filter((log) => log.outcome === 'fail')
   const lastLog = logs[0]
+  // Going back further than today is for managers. Everyone else sees what they recorded themselves.
+  const historyLogs = useMemo(
+    () => (access.manager ? logs : logs.filter((log) => isOwnReading(log, access))),
+    [logs, access],
+  )
 
   function openRecord(item?: MonitoredItem) {
     quickEntry.recordTemperature({ itemId: item?.id, restrictTo: categories })
@@ -86,6 +93,12 @@ export function TemperatureSection({
         description={description}
         actions={
           <>
+            {access.manager ? (
+              <ButtonLink to="/temperatures/review" className="gap-1.5">
+                <CalendarRange className="size-4" />
+                Review
+              </ButtonLink>
+            ) : null}
             <ButtonLink to="/temperatures/labels" className="gap-1.5">
               <QrCode className="size-4" />
               QR labels
@@ -161,7 +174,11 @@ export function TemperatureSection({
             options={[
               { value: 'today', label: todayLabel },
               { value: 'equipment', label: 'Current status', count: items.length },
-              { value: 'history', label: 'History', count: logs.length },
+              {
+                value: 'history',
+                label: access.manager ? 'History' : 'Your readings',
+                count: historyLogs.length,
+              },
             ]}
           />
         </div>
@@ -180,7 +197,7 @@ export function TemperatureSection({
           </div>
         ) : null}
 
-        {tab === 'history' ? <TemperatureHistoryTable logs={logs} items={items} /> : null}
+        {tab === 'history' ? <TemperatureHistoryTable logs={historyLogs} items={items} /> : null}
       </Card>
     </div>
   )

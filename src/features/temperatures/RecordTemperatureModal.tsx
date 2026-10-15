@@ -14,8 +14,9 @@ import { Button } from '@/components/ui/Button'
 import { Field, Select, TextInput, Textarea } from '@/components/ui/Field'
 import { Modal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
-import { readingValue, startsNegative } from './reading'
+import { readingValue, startsNegative, toLocalInputValue } from './reading'
 import { CorrectiveActionField, ReadingInput, VerdictBanner } from './ReadingFields'
+import { PhotoProofField } from './ReadingPhoto'
 
 const CATEGORY_ORDER: MonitoredCategory[] = [
   'fridge',
@@ -25,11 +26,6 @@ const CATEGORY_ORDER: MonitoredCategory[] = [
   'cooking',
   'cooling',
 ]
-
-/** `datetime-local` wants a local, second-less string — not an ISO UTC stamp. */
-function toLocalInputValue(date: Date): string {
-  return format(date, "yyyy-MM-dd'T'HH:mm")
-}
 
 export function RecordTemperatureModal({
   open,
@@ -63,6 +59,7 @@ export function RecordTemperatureModal({
   const [correctiveAction, setCorrectiveAction] = useState('')
   const [notes, setNotes] = useState('')
   const [showNotes, setShowNotes] = useState(false)
+  const [photo, setPhoto] = useState<Blob | null>(null)
   const [submitted, setSubmitted] = useState(false)
 
   const available = useMemo(
@@ -108,7 +105,7 @@ export function RecordTemperatureModal({
   const upNext = selected ? queue.filter((slot) => slot.item.id !== selected.id) : []
 
   const needsCorrectiveAction = outcome === 'fail' && correctiveAction.trim().length === 0
-  const canSave = Boolean(selected) && hasValue && staffId !== '' && !needsCorrectiveAction
+  const canSave = Boolean(selected) && hasValue && staffId !== '' && !needsCorrectiveAction && photo !== null
 
   function choose(item: MonitoredItem | undefined) {
     setItemId(item?.id)
@@ -117,13 +114,14 @@ export function RecordTemperatureModal({
     setCorrectiveAction('')
     setNotes('')
     setShowNotes(false)
+    setPhoto(null)
     setSubmitted(false)
     setRecordedAt('')
   }
 
   function handleSave(then: 'close' | 'next' | 'another') {
     setSubmitted(true)
-    if (!selected || !canSave) return
+    if (!selected || !canSave || !photo) return
 
     const at = recordedAt ? new Date(recordedAt) : new Date()
     recordTemperature({
@@ -134,6 +132,7 @@ export function RecordTemperatureModal({
       period: selected.requiredChecks.length > 0 ? periodForTime(data.settings.periods, at) : undefined,
       correctiveAction: correctiveAction.trim() || undefined,
       notes: notes.trim() || undefined,
+      photo,
     })
 
     if (outcome === 'fail') {
@@ -244,6 +243,14 @@ export function RecordTemperatureModal({
           </div>
 
           <VerdictBanner item={selected} temperature={parsed} outcome={outcome} />
+
+          <PhotoProofField
+            id="temperature-photo"
+            photo={photo}
+            onChange={setPhoto}
+            caption={() => `${selected.name} · ${format(new Date(), 'd MMM yyyy, HH:mm')} · ${staffName(data, staffId)}`}
+            error={submitted && !photo ? 'Take a photo of the reading before saving.' : undefined}
+          />
 
           {lastReading ? (
             <p className="text-ink-muted text-[13px]">

@@ -5,7 +5,7 @@ import { Card, CardBody, CardHeader } from '@/components/ui/Card'
 import { Modal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
 import { SignOutModal } from './AccountCard'
-import { ApproverList, JoinRequestList } from './JoinRequests'
+import { JoinRequestList, PermissionList } from './JoinRequests'
 import { useSync, type SyncApi } from './sync'
 import { formatJoinCode, teamErrorMessage, type TeamDetails } from './team'
 
@@ -53,7 +53,12 @@ export function TeamCard() {
       <CardHeader
         title={sync.team.name}
         description={`Signed in as ${sync.email}${
-          details?.role === 'owner' ? ' · Owner' : details?.canApprove ? ' · Can let people in' : ''
+          details?.role === 'owner'
+            ? ' · Owner'
+            : [details?.isManager ? 'Manager' : null, details?.canApprove ? 'Lets people in' : null]
+                .filter(Boolean)
+                .map((part) => ` · ${part}`)
+                .join('')
         }`}
       />
       <CardBody className="space-y-5">
@@ -114,7 +119,7 @@ export function TeamCard() {
           </Button>
         </div>
 
-        {details?.role === 'owner' ? <ApproverList sync={sync} version={joined} /> : null}
+        {details?.role === 'owner' ? <PermissionList sync={sync} version={joined} /> : null}
       </CardBody>
 
       {dialog === 'new-code' ? (

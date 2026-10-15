@@ -7,6 +7,7 @@ import { jobRoleLabel, staffRoleLabel } from '@/data/staffRoles'
 import { useStore } from '@/data/store'
 import { formatAgo } from '@/lib/format'
 import { initialsOf } from '@/lib/utils'
+import { EDIT_MINUTES } from '@/features/temperatures/access'
 import type { SyncApi } from './sync'
 import { teamErrorMessage, type JoinRequest, type TeamPerson } from './team'
 
@@ -95,8 +96,19 @@ export function JoinRequestList({ sync, onApproved }: { sync: SyncApi; onApprove
   )
 }
 
-/** The owner's choice of who else can let people in. `version` changes when someone new joins. */
-export function ApproverList({ sync, version }: { sync: SyncApi; version: number }) {
+type Permission = 'isManager' | 'canApprove'
+
+const PERMISSIONS: { key: Permission; label: string }[] = [
+  { key: 'isManager', label: 'Manager' },
+  { key: 'canApprove', label: 'Lets people in' },
+]
+
+/**
+ * The owner's choice of what everyone else may do: be a manager (see every
+ * reading and change any of them) and let new people in. `version` changes
+ * when someone new joins.
+ */
+export function PermissionList({ sync, version }: { sync: SyncApi; version: number }) {
   const { data } = useStore()
   const [people, setPeople] = useState<TeamPerson[] | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -113,14 +125,18 @@ export function ApproverList({ sync, version }: { sync: SyncApi; version: number
     }
   }, [teamPeople, version])
 
-  async function allow(person: TeamPerson, allowed: boolean) {
+  async function allow(person: TeamPerson, permission: Permission, allowed: boolean) {
     const set = (value: boolean) =>
-      setPeople((list) => list?.map((entry) => (entry.userId === person.userId ? { ...entry, canApprove: value } : entry)) ?? null)
+      setPeople(
+        (list) =>
+          list?.map((entry) => (entry.userId === person.userId ? { ...entry, [permission]: value } : entry)) ?? null,
+      )
     // Switched straight away, and back if the server says no.
     set(allowed)
     setError(null)
     try {
-      await sync.setApprover(person.userId, allowed)
+      if (permission === 'isManager') await sync.setManager(person.userId, allowed)
+      else await sync.setApprover(person.userId, allowed)
     } catch (failure) {
       set(!allowed)
       setError(teamErrorMessage(failure))
@@ -130,12 +146,13 @@ export function ApproverList({ sync, version }: { sync: SyncApi; version: number
   const others = people?.filter((person) => person.role !== 'owner') ?? []
 
   return (
-    <section aria-labelledby="approvers-heading">
-      <h3 id="approvers-heading" className={HEADING}>
-        Who can let people in
+    <section aria-labelledby="permissions-heading">
+      <h3 id="permissions-heading" className={HEADING}>
+        What people can do
       </h3>
       <p className="text-ink-muted mt-0.5 text-[13px]">
-        You always can. Switch it on for anyone else who should approve new people.
+        As the owner you can do everything. Managers see every reading with its photo and can change any of them at any
+        time; everyone else can change their own for {EDIT_MINUTES} minutes.
       </p>
       {people === null ? (
         error ? null : <p className="text-ink-subtle mt-2 text-sm">Loading…</p>
@@ -148,7 +165,7 @@ export function ApproverList({ sync, version }: { sync: SyncApi; version: number
             const staff = data.staff.find((member) => member.userId === person.userId)
             const who = person.name || staff?.name || 'No name yet'
             return (
-              <li key={person.userId} className="flex items-center gap-3 px-3.5 py-3">
+              <li key={person.userId} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3.5 py-3">
                 <Avatar person={staff ?? { id: person.userId, name: who, initials: initialsOf(who) }} size="sm" />
                 <div className="min-w-0 flex-1">
                   <p className="text-ink truncate text-sm font-medium">{who}</p>
@@ -156,11 +173,20 @@ export function ApproverList({ sync, version }: { sync: SyncApi; version: number
                     {staff ? staffRoleLabel(staff) : jobRoleLabel(person.jobRole)}
                   </p>
                 </div>
-                <Toggle
-                  label={`${who} can let people in`}
-                  checked={person.canApprove}
-                  onChange={(value) => void allow(person, value)}
-                />
+                <div className="flex gap-4">
+                  {PERMISSIONS.map(({ key, label }) => (
+                    <span key={key} className="flex items-center gap-2">
+                      <span className="text-ink-muted text-xs font-medium" aria-hidden>
+                        {label}
+                      </span>
+                      <Toggle
+                        label={`${who}: ${label}`}
+                        checked={person[key]}
+                        onChange={(value) => void allow(person, key, value)}
+                      />
+                    </span>
+                  ))}
+                </div>
               </li>
             )
           })}
