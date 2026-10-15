@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react'
-import { AlertTriangle, ClipboardList, Package, Plus, TrendingDown } from 'lucide-react'
+import { AlertTriangle, ClipboardList, Package, Plus, Trash2, TrendingDown } from 'lucide-react'
 import { selectLowStock, staffName } from '@/data/selectors'
 import { useStore } from '@/data/store'
 import type { StockCategory, StockItem } from '@/data/types'
 import { formatAgo, formatMoney, formatQuantity } from '@/lib/format'
 import { cn, sum, titleCase } from '@/lib/utils'
 import { Badge } from '@/components/ui/Badge'
-import { Button } from '@/components/ui/Button'
+import { Button, IconButton } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Field, Select, TextInput } from '@/components/ui/Field'
@@ -26,6 +26,7 @@ export function StockPage() {
   const [categoryFilter, setCategoryFilter] = useState<StockCategory | 'all'>('all')
   const [query, setQuery] = useState('')
   const [counting, setCounting] = useState<StockItem | undefined>(undefined)
+  const [deleting, setDeleting] = useState<StockItem | undefined>(undefined)
   const [adding, setAdding] = useState(false)
 
   const low = useMemo(() => selectLowStock(data), [data])
@@ -186,9 +187,14 @@ export function StockPage() {
                       ) : null}
                     </Td>
                     <Td className="text-right">
-                      <Button size="sm" onClick={() => setCounting(item)}>
-                        Count
-                      </Button>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button size="sm" onClick={() => setCounting(item)}>
+                          Count
+                        </Button>
+                        <IconButton label={`Delete ${item.name}`} size="sm" onClick={() => setDeleting(item)}>
+                          <Trash2 className="size-4" />
+                        </IconButton>
+                      </div>
                     </Td>
                   </Tr>
                 )
@@ -199,8 +205,46 @@ export function StockPage() {
       </Card>
 
       <CountModal item={counting} onClose={() => setCounting(undefined)} />
+      <DeleteStockModal item={deleting} onClose={() => setDeleting(undefined)} />
       <AddStockModal open={adding} onClose={() => setAdding(false)} />
     </div>
+  )
+}
+
+function DeleteStockModal({ item, onClose }: { item: StockItem | undefined; onClose: () => void }) {
+  const { deleteStockItem } = useStore()
+  const toast = useToast()
+
+  if (!item) return null
+
+  function handleDelete() {
+    if (!item) return
+    deleteStockItem(item.id)
+    toast.success('Stock item deleted', `${item.name} is no longer being tracked.`)
+    onClose()
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Delete this stock item?"
+      size="sm"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button variant="danger" onClick={handleDelete}>
+            Delete item
+          </Button>
+        </>
+      }
+    >
+      <p className="text-ink-muted text-sm">
+        {item.name} will no longer be tracked or flagged for ordering. This can’t be undone.
+      </p>
+    </Modal>
   )
 }
 

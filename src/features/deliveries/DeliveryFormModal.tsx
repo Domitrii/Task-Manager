@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { format } from 'date-fns'
 import { AlertTriangle, Plus, Trash2 } from 'lucide-react'
 import { useStore } from '@/data/store'
-import type { Delivery, DeliveryLine, DeliveryLineCategory } from '@/data/types'
+import type { Delivery, DeliveryLine, DeliveryLineCategory, Supplier } from '@/data/types'
 import { deliveryLineConcern, deliveryTempLimit, deriveDeliveryStatus } from '@/lib/compliance'
 import { cn, createId } from '@/lib/utils'
 import { Badge } from '@/components/ui/Badge'
@@ -10,6 +10,8 @@ import { Button, IconButton } from '@/components/ui/Button'
 import { Checkbox, Field, Select, TextInput, Textarea } from '@/components/ui/Field'
 import { Modal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
+import { SupplierCombobox } from './SupplierCombobox'
+import { matchSupplier } from './suppliers'
 
 const LINE_CATEGORIES: Array<{ value: DeliveryLineCategory; label: string }> = [
   { value: 'chilled', label: 'Chilled' },
@@ -81,9 +83,13 @@ export function DeliveryFormModal({
 
   // Mounted only while open, so the form seeds itself once from `existing`
   // (edit), `repeatOf` (repeat) or sensible defaults (new) and needs no reset effect.
-  const [supplierId, setSupplierId] = useState(() => {
-    const repeated = data.suppliers.find((supplier) => supplier.id === repeatOf?.supplierId && supplier.active)
-    return existing?.supplierId ?? repeated?.id ?? data.suppliers.find((supplier) => supplier.active)?.id ?? ''
+  // The supplier's name as typed: one already on the list, or a new supplier to add.
+  const [supplierName, setSupplierName] = useState(() => {
+    const seeded = existing
+      ? data.suppliers.find((supplier) => supplier.id === existing.supplierId)
+      : (data.suppliers.find((supplier) => supplier.id === repeatOf?.supplierId && supplier.active) ??
+        data.suppliers.find((supplier) => supplier.active))
+    return seeded?.name ?? ''
   })
   const [receivedAt, setReceivedAt] = useState(() =>
     toLocalInputValue(existing ? new Date(existing.receivedAt) : new Date()),
@@ -99,10 +105,12 @@ export function DeliveryFormModal({
   const [submitted, setSubmitted] = useState(false)
 
   const status = useMemo(() => deriveDeliveryStatus(lines), [lines])
+  const matchedSupplier = matchSupplier(data.suppliers, supplierName)
+  const newSupplierName = matchedSupplier ? '' : supplierName.trim()
   const rejectedCount = lines.filter((line) => !line.accepted).length
   const missingProduct = lines.some((line) => line.product.trim() === '')
   const missingReason = lines.some((line) => !line.accepted && !line.rejectionReason)
-  const canSave = supplierId !== '' && checkedBy !== '' && lines.length > 0 && !missingProduct && !missingReason
+  const canSave = supplierName.trim() !== '' && checkedBy !== '' && lines.length > 0 && !missingProduct && !missingReason
 
   function updateLine(id: string, changes: Partial<DeliveryLine>) {
     setLines((current) =>
@@ -132,9 +140,16 @@ export function DeliveryFormModal({
     setSubmitted(true)
     if (!canSave) return
 
+    const supplier: Supplier = matchedSupplier ?? {
+      id: createId('sup'),
+      name: newSupplierName,
+      // What came in on this delivery is the best guess at what they supply.
+      categories: [...new Set(lines.map((line) => line.category))],
+      active: true,
+    }
     const delivery: Delivery = {
       id: existing?.id ?? createId('dv'),
-      supplierId,
+      supplierId: supplier.id,
       receivedAt: new Date(receivedAt).toISOString(),
       checkedBy,
       status,
@@ -145,13 +160,12 @@ export function DeliveryFormModal({
       notes: notes.trim() || undefined,
     }
 
-    saveDelivery(delivery, !existing)
-    const supplier = data.suppliers.find((entry) => entry.id === supplierId)
+    saveDelivery(delivery, !existing, matchedSupplier ? undefined : supplier)
 
     if (status === 'accepted') {
       toast.success(
         existing ? 'Delivery updated' : 'Delivery recorded',
-        `${supplier?.name ?? 'Supplier'} · ${lines.length} line${lines.length === 1 ? '' : 's'} accepted.`,
+        `${supplier.name} · ${lines.length} line${lines.length === 1 ? '' : 's'} accepted.`,
       )
     } else {
       toast.error(
@@ -190,27 +204,15 @@ export function DeliveryFormModal({
             label="Supplier"
             required
             htmlFor="delivery-supplier"
-            hint={
-              data.suppliers.some((supplier) => supplier.active)
-                ? undefined
-                : 'No suppliers yet. Add them in Settings, under Suppliers.'
-            }
+            hint={newSupplierName ? 'New supplier — saved to your suppliers with this delivery.' : undefined}
           >
-            <Select
+            <SupplierCombobox
               id="delivery-supplier"
-              value={supplierId}
-              invalid={submitted && supplierId === ''}
-              onChange={(event) => setSupplierId(event.target.value)}
-            >
-              <option value="">Select a supplier…</option>
-              {data.suppliers
-                .filter((supplier) => supplier.active)
-                .map((supplier) => (
-                  <option key={supplier.id} value={supplier.id}>
-                    {supplier.name}
-                  </option>
-                ))}
-            </Select>
+              suppliers={data.suppliers}
+              value={supplierName}
+              invalid={submitted && supplierName.trim() === ''}
+              onChange={setSupplierName}
+            />
           </Field>
 
           <Field label="Received" required htmlFor="delivery-at">

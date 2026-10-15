@@ -62,6 +62,7 @@ type Action =
   | { type: 'template/delete'; id: ID }
   | { type: 'stock/update'; id: ID; changes: Partial<StockItem> }
   | { type: 'stock/add'; item: StockItem }
+  | { type: 'stock/delete'; id: ID }
   | { type: 'item/save'; item: MonitoredItem }
   | { type: 'item/delete'; id: ID }
   | { type: 'staff/save'; member: StaffMember }
@@ -144,6 +145,8 @@ function reducer(state: AppData, action: Action): AppData {
       return { ...state, stock: patch(state.stock, action.id, action.changes) }
     case 'stock/add':
       return { ...state, stock: [action.item, ...state.stock] }
+    case 'stock/delete':
+      return { ...state, stock: state.stock.filter((item) => item.id !== action.id) }
     case 'item/save':
       return { ...state, items: upsert(state.items, action.item) }
     case 'item/delete':
@@ -201,7 +204,8 @@ interface StoreValue {
   deleteTemperature: (id: ID) => void
   /** A record's photo as an object URL to revoke when done, or null when it can't be shown. */
   photoUrl: (path: string) => Promise<string | null>
-  saveDelivery: (delivery: Delivery, isNew: boolean) => void
+  /** `newSupplier` is one typed in on the delivery form, added alongside the delivery. */
+  saveDelivery: (delivery: Delivery, isNew: boolean, newSupplier?: Supplier) => void
   deleteDelivery: (id: ID) => void
   recordChecklistRun: (run: ChecklistRun) => void
   saveChecklistTemplate: (template: ChecklistTemplate) => void
@@ -218,6 +222,7 @@ interface StoreValue {
   deleteTaskTemplate: (id: ID) => void
   updateStock: (id: ID, changes: Partial<StockItem>) => void
   addStockItem: (item: Omit<StockItem, 'id'>) => void
+  deleteStockItem: (id: ID) => void
   saveItem: (item: MonitoredItem) => void
   deleteItem: (id: ID) => void
   saveStaff: (member: StaffMember) => void
@@ -458,12 +463,13 @@ export function StoreProvider({
         dispatch({ type: 'temperature/delete', id })
       },
 
-      saveDelivery(delivery, isNew) {
+      saveDelivery(delivery, isNew, newSupplier) {
         const normalised: Delivery = { ...delivery, status: deriveDeliveryStatus(delivery.lines) }
+        if (newSupplier) dispatch({ type: 'supplier/save', supplier: newSupplier })
         dispatch(isNew ? { type: 'delivery/add', delivery: normalised } : { type: 'delivery/update', delivery: normalised })
 
         if (isNew && normalised.status !== 'accepted') {
-          const supplier = data.suppliers.find((entry) => entry.id === normalised.supplierId)
+          const supplier = newSupplier ?? data.suppliers.find((entry) => entry.id === normalised.supplierId)
           const rejected = normalised.lines.filter((line) => !line.accepted)
           dispatch({
             type: 'issue/add',
@@ -564,6 +570,10 @@ export function StoreProvider({
 
       addStockItem(item) {
         dispatch({ type: 'stock/add', item: { ...item, id: createId('sk') } })
+      },
+
+      deleteStockItem(id) {
+        dispatch({ type: 'stock/delete', id })
       },
 
       saveItem(item) {
