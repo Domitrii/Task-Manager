@@ -608,7 +608,36 @@ function SuppliersTab() {
           </Button>
         }
       />
-      <TableWrap>
+      {/* Phones: one row per supplier, so contact and Edit don't sit off-screen in a sideways-scrolling table. */}
+      <ul className="divide-line divide-y md:hidden">
+        {data.suppliers.map((supplier) => (
+          <li key={supplier.id} className="flex items-start gap-2 py-3 pr-2 pl-4">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <span className="text-ink min-w-0 truncate text-sm font-medium">{supplier.name}</span>
+                {supplier.active ? null : <Badge tone="neutral">Inactive</Badge>}
+              </div>
+              {supplier.contactName || supplier.phone ? (
+                <p className="text-ink-muted mt-0.5 truncate text-xs">
+                  {[supplier.contactName, supplier.phone].filter(Boolean).join(' · ')}
+                </p>
+              ) : null}
+              <span className="mt-1.5 flex flex-wrap gap-1">
+                {supplier.categories.map((category) => (
+                  <Badge key={category} tone="neutral">
+                    {titleCase(category)}
+                  </Badge>
+                ))}
+              </span>
+            </div>
+            <IconButton label="Edit supplier" size="sm" onClick={() => setEditing(supplier)}>
+              <Pencil className="size-4" />
+            </IconButton>
+          </li>
+        ))}
+      </ul>
+
+      <TableWrap className="hidden md:block">
         <thead>
           <tr>
             <Th>Supplier</Th>
