@@ -24,7 +24,7 @@ export function PageHeader({
             <p className="text-ink-muted mt-1 max-w-2xl text-sm">{description}</p>
           ) : null}
         </div>
-        {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
+        {actions ? <div className="flex max-w-full shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
       </div>
       {children}
     </header>

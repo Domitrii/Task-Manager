@@ -1,17 +1,52 @@
 import type { ReactNode, ThHTMLAttributes, TdHTMLAttributes } from 'react'
 import { cn } from '@/lib/utils'
 
+type ListBreakpoint = 'md' | 'lg'
+
+const LIST_BREAKPOINTS: Record<ListBreakpoint, { list: string; table: string }> = {
+  md: { list: 'md:hidden', table: 'hidden md:block' },
+  lg: { list: 'lg:hidden', table: 'hidden lg:block' },
+}
+
 /**
  * Tables scroll horizontally on small screens rather than reflowing, so column
- * alignment between temperature readings is never lost. Pages that need a
- * genuinely different mobile shape render a card list instead.
+ * alignment is never lost. That's fine for read-only figures; a table with
+ * buttons in it pairs with a `CardList` instead, so phones get stacked rows.
  */
-export function TableWrap({ className, children }: { className?: string; children: ReactNode }) {
+export function TableWrap({
+  className,
+  hideBelow,
+  children,
+}: {
+  className?: string
+  /** Where a `CardList` with the same `showBelow` takes over. */
+  hideBelow?: ListBreakpoint
+  children: ReactNode
+}) {
   return (
-    <div className={cn('w-full overflow-x-auto', className)}>
+    // Relative, so screen-reader-only header labels (absolutely positioned) are
+    // clipped by this scroller instead of widening the whole page.
+    <div className={cn('relative w-full overflow-x-auto', hideBelow && LIST_BREAKPOINTS[hideBelow].table, className)}>
       <table className="w-full min-w-[640px] border-collapse text-sm">{children}</table>
     </div>
   )
+}
+
+/**
+ * The phone shape of a table: one stacked row per record, so nothing the
+ * person needs (an Edit button, the status) sits off to the side. Shown below
+ * `showBelow`; the table it replaces gets the same width as `hideBelow`.
+ */
+export function CardList({
+  showBelow,
+  className,
+  children,
+}: {
+  showBelow: ListBreakpoint
+  className?: string
+  children: ReactNode
+}) {
+  return <ul className={cn('divide-line divide-y', LIST_BREAKPOINTS[showBelow].list, className)}>{children}</ul>
 }
 
 export function Th({

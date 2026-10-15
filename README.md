@@ -9,7 +9,19 @@ npm install
 npm run dev      # http://localhost:5173
 npm run build    # typecheck + production build
 npm run lint
+npm test         # every screen at phone, tablet, laptop and desktop sizes
 ```
+
+`npm test` runs the Playwright suite in `tests/e2e/`. It opens every page, settings tab and
+dialog at 360, 768, 1024 and 1440px wide and fails if anything doesn't fit: the page scrolling
+sideways, something sticking out past the edge, a button hidden in a sideways-scrolling table,
+or content cut off. It starts its own two copies of the app (device-only on :5199, and one with
+dummy Supabase keys on :5198 whose requests the tests answer themselves), so it needs no
+network or real project. `npm run test:ui` opens the same tests in Playwright's UI. The first
+time on a new machine, run `npx playwright install chromium` to download the browser.
+
+Tables that have buttons in them pair with a `CardList` (`src/components/ui/Table.tsx`) so
+phones get stacked rows instead; read-only tables may scroll sideways.
 
 On first run the app opens `/setup`, which offers two ways in:
 

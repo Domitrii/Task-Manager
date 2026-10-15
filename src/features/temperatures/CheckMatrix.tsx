@@ -39,83 +39,135 @@ export function CheckMatrix({
   const byItem = groupBy(slots, (slot) => slot.item.id)
   const items = Object.values(byItem).map((group) => group[0].item)
   const grouped = groupBy(items, (item) => item.category)
+  const showCategories = Object.keys(grouped).length > 1
 
   return (
-    <div className="w-full overflow-x-auto">
-      <table className="w-full min-w-[720px] border-collapse text-sm">
-        <thead>
-          <tr>
-            <th
-              scope="col"
-              className="border-line text-ink-muted sticky left-0 z-10 border-b px-4 py-2.5 text-left text-xs font-semibold tracking-wide uppercase"
-            >
-              Equipment
-            </th>
-            {periods.map((window) => (
-              <th
-                key={window.period}
-                scope="col"
-                className="border-line text-ink-muted border-b px-3 py-2.5 text-center text-xs font-semibold tracking-wide uppercase"
-              >
-                {window.label}
-                <span className="text-ink-subtle block text-[10px] font-normal normal-case">
-                  {window.startTime}–{window.endTime}
-                </span>
-              </th>
-            ))}
-            <th className="border-line border-b px-4 py-2.5" />
-          </tr>
-        </thead>
-        <tbody>
-          {Object.entries(grouped).map(([category, categoryItems]) => {
-            const Icon = CATEGORY_ICONS[category as keyof typeof CATEGORY_ICONS]
-            return (
-              <Fragment key={category}>
-                {Object.keys(grouped).length > 1 ? (
-                  <tr>
-                    <td
-                      colSpan={periods.length + 2}
-                      className="bg-surface-muted/70 text-ink-muted border-line border-b px-4 py-1.5 text-[11px] font-semibold tracking-wider uppercase"
-                    >
-                      <span className="inline-flex items-center gap-1.5">
-                        <Icon className="size-3.5" />
-                        {CATEGORY_LABELS[category as keyof typeof CATEGORY_LABELS]}
-                      </span>
-                    </td>
-                  </tr>
-                ) : null}
-                {categoryItems.map((item) => (
-                  <tr key={item.id} className="last:[&>td]:border-b-0">
-                    <td className="border-line border-b px-4 py-2.5">
-                      <p className="text-ink text-[13px] font-medium">{item.name}</p>
-                      <p className="text-ink-subtle text-[11px]">
+    <>
+      {/* Phones: the sheet's columns don't fit, so each item lists its own checks under it. */}
+      <div className="divide-line divide-y md:hidden">
+        {Object.entries(grouped).map(([category, categoryItems]) => {
+          const Icon = CATEGORY_ICONS[category as keyof typeof CATEGORY_ICONS]
+          return (
+            <section key={category} className="divide-line divide-y">
+              {showCategories ? (
+                <h3 className="bg-surface-muted/70 text-ink-muted px-4 py-1.5 text-[11px] font-semibold tracking-wider uppercase">
+                  <span className="inline-flex items-center gap-1.5">
+                    <Icon className="size-3.5" />
+                    {CATEGORY_LABELS[category as keyof typeof CATEGORY_LABELS]}
+                  </span>
+                </h3>
+              ) : null}
+              {categoryItems.map((item) => (
+                <div key={item.id} className="py-3 pr-2 pl-4">
+                  <div className="flex items-start gap-1">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-ink truncate text-sm font-medium">{item.name}</p>
+                      <p className="text-ink-subtle truncate text-[11px]">
                         {item.location} · {formatRange(item)}
                       </p>
-                    </td>
+                    </div>
+                    <ShowQrButton item={item} />
+                    <Button size="sm" onClick={() => onRecord(item)}>
+                      Log
+                    </Button>
+                  </div>
+                  <div className="mt-2 grid grid-cols-[repeat(auto-fill,minmax(88px,1fr))] gap-2 pr-2">
                     {periods.map((window) => {
                       const slot = byItem[item.id]?.find((entry) => entry.period === window.period)
+                      if (!slot) return null
                       return (
-                        <td key={window.period} className="border-line border-b px-2 py-2 text-center">
-                          {slot ? <SlotCell slot={slot} /> : <span className="text-ink-subtle">—</span>}
-                        </td>
+                        <div key={window.period} className="flex flex-col items-center gap-1">
+                          <span className="text-ink-subtle text-[10px] font-semibold tracking-wide uppercase">
+                            {window.label}
+                          </span>
+                          <SlotCell slot={slot} />
+                        </div>
                       )
                     })}
-                    <td className="border-line border-b px-3 py-2 text-right">
-                      <span className="flex items-center justify-end gap-1">
-                        <ShowQrButton item={item} />
-                        <Button size="sm" onClick={() => onRecord(item)}>
-                          Log
-                        </Button>
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </Fragment>
-            )
-          })}
-        </tbody>
-      </table>
-    </div>
+                  </div>
+                </div>
+              ))}
+            </section>
+          )
+        })}
+      </div>
+
+      <div className="relative hidden w-full overflow-x-auto md:block">
+        <table className="w-full min-w-[700px] border-collapse text-sm">
+          <thead>
+            <tr>
+              <th
+                scope="col"
+                className="border-line text-ink-muted sticky left-0 z-10 border-b px-4 py-2.5 text-left text-xs font-semibold tracking-wide uppercase"
+              >
+                Equipment
+              </th>
+              {periods.map((window) => (
+                <th
+                  key={window.period}
+                  scope="col"
+                  className="border-line text-ink-muted border-b px-3 py-2.5 text-center text-xs font-semibold tracking-wide uppercase"
+                >
+                  {window.label}
+                  <span className="text-ink-subtle block text-[10px] font-normal normal-case">
+                    {window.startTime}–{window.endTime}
+                  </span>
+                </th>
+              ))}
+              <th className="border-line border-b px-4 py-2.5" />
+            </tr>
+          </thead>
+          <tbody>
+            {Object.entries(grouped).map(([category, categoryItems]) => {
+              const Icon = CATEGORY_ICONS[category as keyof typeof CATEGORY_ICONS]
+              return (
+                <Fragment key={category}>
+                  {showCategories ? (
+                    <tr>
+                      <td
+                        colSpan={periods.length + 2}
+                        className="bg-surface-muted/70 text-ink-muted border-line border-b px-4 py-1.5 text-[11px] font-semibold tracking-wider uppercase"
+                      >
+                        <span className="inline-flex items-center gap-1.5">
+                          <Icon className="size-3.5" />
+                          {CATEGORY_LABELS[category as keyof typeof CATEGORY_LABELS]}
+                        </span>
+                      </td>
+                    </tr>
+                  ) : null}
+                  {categoryItems.map((item) => (
+                    <tr key={item.id} className="last:[&>td]:border-b-0">
+                      <td className="border-line border-b px-4 py-2.5">
+                        <p className="text-ink text-[13px] font-medium">{item.name}</p>
+                        <p className="text-ink-subtle text-[11px]">
+                          {item.location} · {formatRange(item)}
+                        </p>
+                      </td>
+                      {periods.map((window) => {
+                        const slot = byItem[item.id]?.find((entry) => entry.period === window.period)
+                        return (
+                          <td key={window.period} className="border-line border-b px-2 py-2 text-center">
+                            {slot ? <SlotCell slot={slot} /> : <span className="text-ink-subtle">—</span>}
+                          </td>
+                        )
+                      })}
+                      <td className="border-line border-b px-3 py-2 text-right">
+                        <span className="flex items-center justify-end gap-1">
+                          <ShowQrButton item={item} />
+                          <Button size="sm" onClick={() => onRecord(item)}>
+                            Log
+                          </Button>
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </Fragment>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </>
   )
 }
 

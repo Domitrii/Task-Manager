@@ -20,7 +20,7 @@ import { Button, ButtonLink, IconButton } from '@/components/ui/Button'
 import { Card, CardBody, CardHeader } from '@/components/ui/Card'
 import { Checkbox, Field, Select, TextInput, Textarea, Toggle } from '@/components/ui/Field'
 import { Modal } from '@/components/ui/Modal'
-import { TableWrap, Td, Th, Tr } from '@/components/ui/Table'
+import { CardList, TableWrap, Td, Th, Tr } from '@/components/ui/Table'
 import { Tabs } from '@/components/ui/Tabs'
 import { useToast } from '@/components/ui/Toast'
 import { PageHeader } from '@/components/shared/PageHeader'
@@ -225,7 +225,38 @@ function EquipmentTab() {
           </>
         }
       />
-      <TableWrap>
+      <CardList showBelow="md">
+        {data.items.map((item) => (
+          <li key={item.id} className="flex items-start gap-2 py-3 pr-2 pl-4">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <span className="text-ink min-w-0 truncate text-sm font-medium">{item.name}</span>
+                {item.active ? null : <Badge tone="neutral">Inactive</Badge>}
+              </div>
+              <p className="text-ink-muted mt-0.5 text-xs">
+                {item.location} · <span className="tabular">{formatRange(item)}</span>
+              </p>
+              <p className="text-ink-subtle mt-0.5 text-xs">
+                {CATEGORY_LABELS[item.category]} ·{' '}
+                {item.requiredChecks.length === 0
+                  ? 'Ad-hoc'
+                  : item.requiredChecks.map((period) => titleCase(period)).join(', ')}
+              </p>
+            </div>
+            <span className="flex shrink-0 gap-1">
+              <ShowQrButton item={item} />
+              <IconButton label="Edit equipment" size="sm" onClick={() => setEditing(item)}>
+                <Pencil className="size-4" />
+              </IconButton>
+              <IconButton label="Delete equipment" size="sm" onClick={() => deleteItem(item.id)}>
+                <Trash2 className="size-4" />
+              </IconButton>
+            </span>
+          </li>
+        ))}
+      </CardList>
+
+      <TableWrap hideBelow="md">
         <thead>
           <tr>
             <Th>Name</Th>
@@ -608,8 +639,7 @@ function SuppliersTab() {
           </Button>
         }
       />
-      {/* Phones: one row per supplier, so contact and Edit don't sit off-screen in a sideways-scrolling table. */}
-      <ul className="divide-line divide-y md:hidden">
+      <CardList showBelow="md">
         {data.suppliers.map((supplier) => (
           <li key={supplier.id} className="flex items-start gap-2 py-3 pr-2 pl-4">
             <div className="min-w-0 flex-1">
@@ -635,9 +665,9 @@ function SuppliersTab() {
             </IconButton>
           </li>
         ))}
-      </ul>
+      </CardList>
 
-      <TableWrap className="hidden md:block">
+      <TableWrap hideBelow="md">
         <thead>
           <tr>
             <Th>Supplier</Th>

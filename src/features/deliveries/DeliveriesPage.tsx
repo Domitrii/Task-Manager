@@ -8,7 +8,7 @@ import {
   staffName,
 } from '@/data/selectors'
 import { useStore } from '@/data/store'
-import type { Delivery } from '@/data/types'
+import type { Delivery, VenueSettings } from '@/data/types'
 import { deliveryTempLimit } from '@/lib/compliance'
 import { formatDate, formatRelativeDay, formatTemp } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
@@ -20,7 +20,7 @@ import { Card } from '@/components/ui/Card'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Select, TextInput } from '@/components/ui/Field'
 import { Tabs } from '@/components/ui/Tabs'
-import { TableWrap, Td, Th, Tr } from '@/components/ui/Table'
+import { CardList, TableWrap, Td, Th, Tr } from '@/components/ui/Table'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { StatCard } from '@/components/shared/StatCard'
 import { DeliveryStatusBadge } from '@/components/shared/StatusBadge'
@@ -28,6 +28,18 @@ import { DeliveryDetailModal } from './DeliveryDetailModal'
 import { DeliveryFormModal } from './DeliveryFormModal'
 
 type TabKey = 'all' | 'today' | 'rejections' | 'useby'
+
+/** The reading to show for a delivery: the first one over its limit, or else the first probed. */
+function worstTemperature(delivery: Delivery, settings: VenueSettings) {
+  const temps = delivery.lines.filter((line) => line.temperature !== null)
+  const worst = temps.reduce<{ value: number; failed: boolean } | null>((acc, line) => {
+    const limit = deliveryTempLimit(line, settings)
+    const failed = limit !== null && line.temperature !== null && line.temperature > limit
+    if (!acc || (failed && !acc.failed)) return { value: line.temperature as number, failed }
+    return acc
+  }, null)
+  return { worst, probed: temps.length }
+}
 
 export function DeliveriesPage() {
   const now = useNow()
@@ -63,6 +75,7 @@ export function DeliveriesPage() {
   const rejected = useMemo(() => selectRejectedDeliveries(data, 30, now), [data, now])
   const expiring = useMemo(() => selectExpiringStock(data, 2, now), [data, now])
 
+  const todayLines = today.reduce((total, delivery) => total + delivery.lines.length, 0)
   const rejectedLineCount = useMemo(
     () => rejected.reduce((total, delivery) => total + delivery.lines.filter((line) => !line.accepted).length, 0),
     [rejected],
@@ -114,7 +127,7 @@ export function DeliveriesPage() {
         <StatCard
           label="Deliveries today"
           value={today.length}
-          sublabel={`${today.reduce((total, delivery) => total + delivery.lines.length, 0)} lines checked`}
+          sublabel={`${todayLines} line${todayLines === 1 ? '' : 's'} checked`}
           icon={<Package className="size-4" />}
         />
         <StatCard
@@ -201,100 +214,142 @@ export function DeliveriesPage() {
                 }
               />
             ) : (
-              <TableWrap>
-                <thead>
-                  <tr>
-                    <Th>Supplier</Th>
-                    <Th>Received</Th>
-                    <Th>Products</Th>
-                    <Th>Temperatures</Th>
-                    <Th>Status</Th>
-                    <Th>Checked by</Th>
-                    <Th>
-                      <span className="sr-only">Repeat</span>
-                    </Th>
-                  </tr>
-                </thead>
-                <tbody>
+              <>
+                <CardList showBelow="lg">
                   {filtered.slice(0, 60).map((delivery) => {
                     const supplier = data.suppliers.find((entry) => entry.id === delivery.supplierId)
-                    const person = data.staff.find((entry) => entry.id === delivery.checkedBy)
-                    const temps = delivery.lines.filter((line) => line.temperature !== null)
-                    const worst = temps.reduce<{ value: number; failed: boolean } | null>((acc, line) => {
-                      const limit = deliveryTempLimit(line, data.settings)
-                      const failed = limit !== null && line.temperature !== null && line.temperature > limit
-                      if (!acc || (failed && !acc.failed)) return { value: line.temperature as number, failed }
-                      return acc
-                    }, null)
-
+                    const { worst } = worstTemperature(delivery, data.settings)
                     return (
-                      <Tr key={delivery.id} onClick={() => setSelectedId(delivery.id)}>
-                        <Td>
-                          <span className="text-ink block text-[13px] font-medium">{supplier?.name}</span>
-                          {delivery.deliveryNote ? (
-                            <span className="text-ink-subtle text-[11px]">{delivery.deliveryNote}</span>
-                          ) : null}
-                        </Td>
-                        <Td>
-                          <span className="text-ink-muted text-[13px]">
-                            {formatRelativeDay(delivery.receivedAt)}
+                      <li key={delivery.id} className="flex items-start gap-1 pr-2">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedId(delivery.id)}
+                          className="hover:bg-surface-muted/70 min-w-0 flex-1 py-3 pl-4 text-left transition-colors"
+                        >
+                          <span className="flex items-center gap-2">
+                            <span className="text-ink min-w-0 truncate text-sm font-medium">{supplier?.name}</span>
+                            <DeliveryStatusBadge status={delivery.status} />
                           </span>
-                        </Td>
-                        <Td>
-                          <span className="text-ink-muted text-[13px]">
-                            {delivery.lines.length} line{delivery.lines.length === 1 ? '' : 's'}
+                          <span className="text-ink-muted mt-0.5 block text-xs">
+                            {formatRelativeDay(delivery.receivedAt)} · {delivery.lines.length} line
+                            {delivery.lines.length === 1 ? '' : 's'} ·{' '}
+                            {worst ? (
+                              <span className={cn('tabular', worst.failed && 'text-fail-600 dark:text-fail-500 font-medium')}>
+                                {formatTemp(worst.value)}
+                              </span>
+                            ) : (
+                              'Ambient'
+                            )}
                           </span>
-                          <span className="text-ink-subtle block max-w-52 truncate text-[11px]">
+                          <span className="text-ink-subtle mt-0.5 block truncate text-[11px]">
                             {delivery.lines.map((line) => line.product).join(', ')}
                           </span>
-                        </Td>
-                        <Td>
-                          {worst ? (
-                            <span
-                              className={cn(
-                                'tabular text-[13px] font-medium',
-                                worst.failed ? 'text-fail-600 dark:text-fail-500' : 'text-ink',
-                              )}
-                            >
-                              {formatTemp(worst.value)}
-                              {temps.length > 1 ? (
-                                <span className="text-ink-subtle font-normal"> · {temps.length} probed</span>
-                              ) : null}
-                            </span>
-                          ) : (
-                            <span className="text-ink-subtle text-[13px]">Ambient</span>
-                          )}
-                        </Td>
-                        <Td>
-                          <DeliveryStatusBadge status={delivery.status} />
-                        </Td>
-                        <Td>
-                          <span className="flex items-center gap-2">
-                            <Avatar person={person} size="xs" />
-                            <span className="text-ink-muted text-[13px]">
-                              {staffName(data, delivery.checkedBy)}
-                            </span>
-                          </span>
-                        </Td>
-                        <Td className="w-0 py-2 pr-3 pl-0">
-                          <IconButton
-                            label={`Repeat this delivery from ${supplier?.name ?? 'this supplier'}`}
-                            size="sm"
-                            onClick={(event) => {
-                              // The row itself opens the delivery.
-                              event.stopPropagation()
-                              setRepeating(delivery)
-                              setFormOpen(true)
-                            }}
-                          >
-                            <Repeat className="size-4" />
-                          </IconButton>
-                        </Td>
-                      </Tr>
+                        </button>
+                        <IconButton
+                          label={`Repeat this delivery from ${supplier?.name ?? 'this supplier'}`}
+                          size="sm"
+                          className="mt-3"
+                          onClick={() => {
+                            setRepeating(delivery)
+                            setFormOpen(true)
+                          }}
+                        >
+                          <Repeat className="size-4" />
+                        </IconButton>
+                      </li>
                     )
                   })}
-                </tbody>
-              </TableWrap>
+                </CardList>
+                <TableWrap hideBelow="lg">
+                  <thead>
+                    <tr>
+                      <Th>Supplier</Th>
+                      <Th>Received</Th>
+                      <Th>Products</Th>
+                      <Th>Temperatures</Th>
+                      <Th>Status</Th>
+                      {/* Dropped where the sidebar leaves the table too little room. */}
+                      <Th className="hidden xl:table-cell">Checked by</Th>
+                      <Th>
+                        <span className="sr-only">Repeat</span>
+                      </Th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.slice(0, 60).map((delivery) => {
+                      const supplier = data.suppliers.find((entry) => entry.id === delivery.supplierId)
+                      const person = data.staff.find((entry) => entry.id === delivery.checkedBy)
+                      const { worst, probed } = worstTemperature(delivery, data.settings)
+
+                      return (
+                        <Tr key={delivery.id} onClick={() => setSelectedId(delivery.id)}>
+                          <Td>
+                            <span className="text-ink block text-[13px] font-medium">{supplier?.name}</span>
+                            {delivery.deliveryNote ? (
+                              <span className="text-ink-subtle text-[11px]">{delivery.deliveryNote}</span>
+                            ) : null}
+                          </Td>
+                          <Td>
+                            <span className="text-ink-muted text-[13px] whitespace-nowrap">
+                              {formatRelativeDay(delivery.receivedAt)}
+                            </span>
+                          </Td>
+                          <Td>
+                            <span className="text-ink-muted text-[13px]">
+                              {delivery.lines.length} line{delivery.lines.length === 1 ? '' : 's'}
+                            </span>
+                            <span className="text-ink-subtle block max-w-36 truncate text-[11px] xl:max-w-52">
+                              {delivery.lines.map((line) => line.product).join(', ')}
+                            </span>
+                          </Td>
+                          <Td>
+                            {worst ? (
+                              <span
+                                className={cn(
+                                  'tabular text-[13px] font-medium',
+                                  worst.failed ? 'text-fail-600 dark:text-fail-500' : 'text-ink',
+                                )}
+                              >
+                                {formatTemp(worst.value)}
+                                {probed > 1 ? (
+                                  <span className="text-ink-subtle font-normal"> · {probed} probed</span>
+                                ) : null}
+                              </span>
+                            ) : (
+                              <span className="text-ink-subtle text-[13px]">Ambient</span>
+                            )}
+                          </Td>
+                          <Td>
+                            <DeliveryStatusBadge status={delivery.status} />
+                          </Td>
+                          <Td className="hidden xl:table-cell">
+                            <span className="flex items-center gap-2">
+                              <Avatar person={person} size="xs" />
+                              <span className="text-ink-muted text-[13px]">
+                                {staffName(data, delivery.checkedBy)}
+                              </span>
+                            </span>
+                          </Td>
+                          <Td className="w-0 py-2 pr-3 pl-0">
+                            <IconButton
+                              label={`Repeat this delivery from ${supplier?.name ?? 'this supplier'}`}
+                              size="sm"
+                              onClick={(event) => {
+                                // The row itself opens the delivery.
+                                event.stopPropagation()
+                                setRepeating(delivery)
+                                setFormOpen(true)
+                              }}
+                            >
+                              <Repeat className="size-4" />
+                            </IconButton>
+                          </Td>
+                        </Tr>
+                      )
+                    })}
+                  </tbody>
+                </TableWrap>
+              </>
             )}
           </>
         )}

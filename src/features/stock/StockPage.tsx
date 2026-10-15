@@ -11,7 +11,7 @@ import { Card } from '@/components/ui/Card'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Field, Select, TextInput } from '@/components/ui/Field'
 import { Modal } from '@/components/ui/Modal'
-import { TableWrap, Td, Th, Tr } from '@/components/ui/Table'
+import { CardList, TableWrap, Td, Th, Tr } from '@/components/ui/Table'
 import { Tabs } from '@/components/ui/Tabs'
 import { useToast } from '@/components/ui/Toast'
 import { PageHeader } from '@/components/shared/PageHeader'
@@ -19,6 +19,14 @@ import { ProgressBar } from '@/components/shared/ProgressRing'
 import { StatCard } from '@/components/shared/StatCard'
 
 const CATEGORIES: StockCategory[] = ['meat', 'fish', 'dairy', 'produce', 'dry', 'frozen', 'drinks', 'packaging']
+
+/** How full the shelf is against par: none left, at or below par, or fine. */
+function stockLevel(item: StockItem) {
+  const ratio = item.parLevel === 0 ? 1 : item.quantity / item.parLevel
+  const tone = item.quantity <= 0 ? 'fail' : ratio <= 1 ? 'warn' : 'pass'
+  const text = { fail: 'text-fail-600 dark:text-fail-500', warn: 'text-warn-600 dark:text-warn-500', pass: 'text-ink' }[tone]
+  return { ratio, tone, text } as const
+}
 
 export function StockPage() {
   const { data } = useStore()
@@ -125,82 +133,109 @@ export function StockPage() {
         {filtered.length === 0 ? (
           <EmptyState icon={<Package className="size-5" />} title="No stock items match" />
         ) : (
-          <TableWrap>
-            <thead>
-              <tr>
-                <Th>Item</Th>
-                <Th>Location</Th>
-                <Th numeric>On hand</Th>
-                <Th numeric>Par level</Th>
-                <Th>Level</Th>
-                <Th>Last counted</Th>
-                <Th />
-              </tr>
-            </thead>
-            <tbody>
+          <>
+            <CardList showBelow="md">
               {filtered.map((item) => {
-                const ratio = item.parLevel === 0 ? 1 : item.quantity / item.parLevel
+                const level = stockLevel(item)
                 return (
-                  <Tr key={item.id}>
-                    <Td>
-                      <span className="text-ink block text-[13px] font-medium">{item.name}</span>
-                      <span className="text-ink-subtle text-[11px]">{titleCase(item.category)}</span>
-                    </Td>
-                    <Td>
-                      <span className="text-ink-muted text-[13px]">{item.location}</span>
-                    </Td>
-                    <Td numeric>
-                      <span
-                        className={cn(
-                          'text-[13px] font-semibold',
-                          item.quantity <= 0
-                            ? 'text-fail-600 dark:text-fail-500'
-                            : ratio <= 1
-                              ? 'text-warn-600 dark:text-warn-500'
-                              : 'text-ink',
-                        )}
-                      >
+                  <li key={item.id} className="py-3 pr-2 pl-4">
+                    <div className="flex items-start gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-ink truncate text-sm font-medium">{item.name}</p>
+                        <p className="text-ink-muted truncate text-xs">
+                          {titleCase(item.category)} · {item.location}
+                        </p>
+                      </div>
+                      <Button size="sm" onClick={() => setCounting(item)}>
+                        Count
+                      </Button>
+                      <IconButton label={`Delete ${item.name}`} size="sm" onClick={() => setDeleting(item)}>
+                        <Trash2 className="size-4" />
+                      </IconButton>
+                    </div>
+                    <div className="mt-2 flex items-center gap-3 pr-2">
+                      <span className={cn('tabular text-[13px] font-semibold', level.text)}>
                         {formatQuantity(item.quantity, item.unit)}
                       </span>
-                    </Td>
-                    <Td numeric>
-                      <span className="text-ink-muted text-[13px]">
-                        {formatQuantity(item.parLevel, item.unit)}
-                      </span>
-                    </Td>
-                    <Td>
-                      <div className="w-28">
-                        <ProgressBar
-                          value={Math.min(ratio, 1.5) * 66}
-                          tone={item.quantity <= 0 ? 'fail' : ratio <= 1 ? 'warn' : 'pass'}
-                        />
+                      <span className="text-ink-muted text-xs">par {formatQuantity(item.parLevel, item.unit)}</span>
+                      <div className="min-w-0 flex-1">
+                        <ProgressBar value={Math.min(level.ratio, 1.5) * 66} tone={level.tone} />
                       </div>
-                    </Td>
-                    <Td>
-                      <span className="text-ink-muted text-[13px]">
-                        {item.lastCountedAt ? formatAgo(item.lastCountedAt) : 'Never'}
-                      </span>
-                      {item.lastCountedBy ? (
-                        <span className="text-ink-subtle block text-[11px]">
-                          {staffName(data, item.lastCountedBy)}
-                        </span>
-                      ) : null}
-                    </Td>
-                    <Td className="text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button size="sm" onClick={() => setCounting(item)}>
-                          Count
-                        </Button>
-                        <IconButton label={`Delete ${item.name}`} size="sm" onClick={() => setDeleting(item)}>
-                          <Trash2 className="size-4" />
-                        </IconButton>
-                      </div>
-                    </Td>
-                  </Tr>
+                    </div>
+                    <p className="text-ink-subtle mt-1 text-[11px]">
+                      {item.lastCountedAt
+                        ? `Counted ${formatAgo(item.lastCountedAt)}${item.lastCountedBy ? ` by ${staffName(data, item.lastCountedBy)}` : ''}`
+                        : 'Never counted'}
+                    </p>
+                  </li>
                 )
               })}
-            </tbody>
-          </TableWrap>
+            </CardList>
+            <TableWrap hideBelow="md">
+              <thead>
+                <tr>
+                  <Th>Item</Th>
+                  <Th>Location</Th>
+                  <Th numeric>On hand</Th>
+                  <Th numeric>Par level</Th>
+                  <Th>Level</Th>
+                  <Th>Last counted</Th>
+                  <Th />
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((item) => {
+                  const level = stockLevel(item)
+                  return (
+                    <Tr key={item.id}>
+                      <Td>
+                        <span className="text-ink block text-[13px] font-medium">{item.name}</span>
+                        <span className="text-ink-subtle text-[11px]">{titleCase(item.category)}</span>
+                      </Td>
+                      <Td>
+                        <span className="text-ink-muted text-[13px]">{item.location}</span>
+                      </Td>
+                      <Td numeric>
+                        <span className={cn('text-[13px] font-semibold', level.text)}>
+                          {formatQuantity(item.quantity, item.unit)}
+                        </span>
+                      </Td>
+                      <Td numeric>
+                        <span className="text-ink-muted text-[13px]">
+                          {formatQuantity(item.parLevel, item.unit)}
+                        </span>
+                      </Td>
+                      <Td>
+                        <div className="w-28">
+                          <ProgressBar value={Math.min(level.ratio, 1.5) * 66} tone={level.tone} />
+                        </div>
+                      </Td>
+                      <Td>
+                        <span className="text-ink-muted text-[13px]">
+                          {item.lastCountedAt ? formatAgo(item.lastCountedAt) : 'Never'}
+                        </span>
+                        {item.lastCountedBy ? (
+                          <span className="text-ink-subtle block text-[11px]">
+                            {staffName(data, item.lastCountedBy)}
+                          </span>
+                        ) : null}
+                      </Td>
+                      <Td className="text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button size="sm" onClick={() => setCounting(item)}>
+                            Count
+                          </Button>
+                          <IconButton label={`Delete ${item.name}`} size="sm" onClick={() => setDeleting(item)}>
+                            <Trash2 className="size-4" />
+                          </IconButton>
+                        </div>
+                      </Td>
+                    </Tr>
+                  )
+                })}
+              </tbody>
+            </TableWrap>
+          </>
         )}
       </Card>
 
