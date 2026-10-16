@@ -19,6 +19,7 @@ const PAGES = [
   '/checklists/cleaning',
   '/checklists/food-safety',
   '/deliveries',
+  '/suppliers',
   '/food-safety',
   '/stock',
   '/templates',
@@ -72,6 +73,18 @@ test.describe('with the demo venue', () => {
       expect(errors).toEqual([])
     })
   }
+
+  test('/suppliers fits for someone who can’t place orders', async ({ page }) => {
+    const errors = watchForErrors(page)
+    await visit(page, '/')
+    await page.getByRole('button', { name: /Switch person/ }).click()
+    await page.getByRole('button', { name: /Lena Ferreira/ }).click()
+    await visit(page, '/suppliers')
+    await expect(page.getByText(/can place orders/)).toBeVisible()
+    await expect(page.getByRole('button', { name: 'New order' })).toHaveCount(0)
+    await expectToFitScreen(page)
+    expect(errors).toEqual([])
+  })
 
   test('temperature history fits', async ({ page }) => {
     await visit(page, '/temperatures')

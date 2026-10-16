@@ -47,7 +47,92 @@ const DIALOGS: Array<{ name: string; open: (page: Page) => Promise<void>; phones
     name: 'delivery details',
     open: async (page) => {
       await visit(page, '/deliveries')
-      await page.locator('tbody tr, li > button').filter({ visible: true }).first().click()
+      await openTab(page, 'All deliveries')
+      // Past the orders waiting at the top, to the deliveries themselves.
+      await page
+        .locator('tbody tr, li > button')
+        .filter({ visible: true })
+        .filter({ hasNotText: /Due today|Overdue/ })
+        .first()
+        .click()
+    },
+  },
+  {
+    name: 'delivery checked in against an order, with discrepancies',
+    open: async (page) => {
+      await visit(page, '/deliveries')
+      await openTab(page, 'All deliveries')
+      await page.locator('tbody tr, li > button').filter({ visible: true }).filter({ hasText: 'Discrepancies' }).first().click()
+    },
+  },
+  {
+    name: 'check in an order',
+    open: async (page) => {
+      await visit(page, '/deliveries')
+      await visible(page, /^Check in$/).click()
+    },
+  },
+  {
+    name: 'check in, with an item open and an extra added',
+    open: async (page) => {
+      await visit(page, '/deliveries')
+      await visible(page, /^Check in$/).click()
+      const dialog = page.getByRole('dialog')
+      await dialog.getByRole('button', { name: 'Mark all received' }).click()
+      await dialog.getByRole('button', { name: /^Show details for/ }).first().click()
+      await dialog.getByRole('button', { name: 'Add extra item' }).click()
+    },
+  },
+  {
+    name: 'move a delivery date',
+    open: async (page) => {
+      await visit(page, '/deliveries')
+      await visible(page, 'Move delivery date').click()
+    },
+  },
+  {
+    name: 'cancel an order',
+    open: async (page) => {
+      await visit(page, '/deliveries')
+      await visible(page, /^Cancel$/).click()
+    },
+  },
+  {
+    name: 'new order, with a remembered price',
+    open: async (page) => {
+      await visit(page, '/suppliers')
+      await visible(page, 'New order').click()
+      const dialog = page.getByRole('dialog')
+      await dialog.getByLabel('Supplier').selectOption({ label: 'Harrow & Sons Butchers' })
+      await dialog.getByPlaceholder('e.g. Chicken breast, skin-on').fill('Beef mince 20%')
+    },
+  },
+  {
+    name: 'edit an order',
+    open: async (page) => {
+      await visit(page, '/suppliers')
+      await visible(page, 'Edit order').click()
+    },
+  },
+  {
+    name: 'repeat an order',
+    open: async (page) => {
+      await visit(page, '/suppliers')
+      await visible(page, 'Repeat this order').click()
+    },
+  },
+  {
+    name: 'order details',
+    open: async (page) => {
+      await visit(page, '/suppliers')
+      await visible(page, /^Delivered .*Discrepancies/).click()
+    },
+  },
+  {
+    name: 'a supplier’s past orders',
+    open: async (page) => {
+      await visit(page, '/suppliers')
+      await visible(page, /^All \d+ past orders/).click()
     },
   },
   {

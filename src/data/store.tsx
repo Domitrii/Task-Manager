@@ -29,10 +29,13 @@ import type {
   Delivery,
   FoodSafetyIssue,
   ID,
+  ISODate,
   MonitoredItem,
   StaffMember,
   StockItem,
   Supplier,
+  SupplierOrder,
+  SupplierOrderLine,
   Task,
   TaskTemplate,
   TemperatureLog,
@@ -49,6 +52,7 @@ type Action =
   | { type: 'delivery/add'; delivery: Delivery }
   | { type: 'delivery/update'; delivery: Delivery }
   | { type: 'delivery/delete'; id: ID }
+  | { type: 'order/save'; order: SupplierOrder }
   | { type: 'checklist/run'; run: ChecklistRun }
   | { type: 'checklist/template/save'; template: ChecklistTemplate }
   | { type: 'issue/add'; issue: FoodSafetyIssue }
@@ -114,6 +118,8 @@ function reducer(state: AppData, action: Action): AppData {
       return { ...state, deliveries: upsert(state.deliveries, action.delivery) }
     case 'delivery/delete':
       return { ...state, deliveries: state.deliveries.filter((delivery) => delivery.id !== action.id) }
+    case 'order/save':
+      return { ...state, supplierOrders: upsert(state.supplierOrders, action.order) }
     case 'checklist/run':
       return {
         ...state,
@@ -188,6 +194,14 @@ export interface EditTemperatureInput {
   reason?: string
 }
 
+export interface CheckInInput {
+  orderId: ID
+  /** What arrived, as checked. Its order, status and supplier are filled in from the order. */
+  delivery: Delivery
+  /** Extras moved onto the order list: added to the order, so they count toward its prices. */
+  addToOrder: SupplierOrderLine[]
+}
+
 interface StoreValue {
   data: AppData
   ready: boolean
@@ -207,6 +221,14 @@ interface StoreValue {
   /** `newSupplier` is one typed in on the delivery form, added alongside the delivery. */
   saveDelivery: (delivery: Delivery, isNew: boolean, newSupplier?: Supplier) => void
   deleteDelivery: (id: ID) => void
+  /** Adds or changes an open order: items, quantities, prices, dates. Received and cancelled orders stay as they are. */
+  saveOrder: (order: SupplierOrder) => void
+  /** A new delivery date for an order, which makes an overdue one expected again. */
+  moveOrderDelivery: (id: ID, deliveryDate: ISODate) => void
+  /** Calls an order off. It stays in the supplier's history. */
+  cancelOrder: (id: ID) => void
+  /** Records the delivery an order arrived as, and marks the order received by whoever checked it in. */
+  checkInOrder: (input: CheckInInput) => Delivery
   recordChecklistRun: (run: ChecklistRun) => void
   saveChecklistTemplate: (template: ChecklistTemplate) => void
   addIssue: (issue: Omit<FoodSafetyIssue, 'id'>) => FoodSafetyIssue
@@ -388,6 +410,29 @@ export function StoreProvider({
       })
     }
 
+    /** Rejected lines on a new delivery become an issue, so they get followed up. */
+    function raiseRejectionIssue(delivery: Delivery, newSupplier?: Supplier) {
+      if (delivery.status === 'accepted') return
+      const supplier = newSupplier ?? data.suppliers.find((entry) => entry.id === delivery.supplierId)
+      const rejected = delivery.lines.filter((line) => !line.accepted)
+      dispatch({
+        type: 'issue/add',
+        issue: {
+          id: createId('is'),
+          title: `${rejected.length} line${rejected.length === 1 ? '' : 's'} rejected from ${supplier?.name ?? 'supplier'}`,
+          description: rejected
+            .map((line) => `${line.product}: ${line.rejectionReason ?? 'Rejected on receipt.'}`)
+            .join('\n'),
+          severity: delivery.status === 'rejected' ? 'high' : 'medium',
+          status: 'open',
+          source: 'delivery',
+          raisedAt: delivery.receivedAt,
+          raisedBy: delivery.checkedBy,
+          linkedRecordId: delivery.id,
+        },
+      })
+    }
+
     return {
       data,
       ready,
@@ -467,31 +512,61 @@ export function StoreProvider({
         const normalised: Delivery = { ...delivery, status: deriveDeliveryStatus(delivery.lines) }
         if (newSupplier) dispatch({ type: 'supplier/save', supplier: newSupplier })
         dispatch(isNew ? { type: 'delivery/add', delivery: normalised } : { type: 'delivery/update', delivery: normalised })
-
-        if (isNew && normalised.status !== 'accepted') {
-          const supplier = newSupplier ?? data.suppliers.find((entry) => entry.id === normalised.supplierId)
-          const rejected = normalised.lines.filter((line) => !line.accepted)
-          dispatch({
-            type: 'issue/add',
-            issue: {
-              id: createId('is'),
-              title: `${rejected.length} line${rejected.length === 1 ? '' : 's'} rejected from ${supplier?.name ?? 'supplier'}`,
-              description: rejected
-                .map((line) => `${line.product}: ${line.rejectionReason ?? 'Rejected on receipt.'}`)
-                .join('\n'),
-              severity: normalised.status === 'rejected' ? 'high' : 'medium',
-              status: 'open',
-              source: 'delivery',
-              raisedAt: normalised.receivedAt,
-              raisedBy: normalised.checkedBy,
-              linkedRecordId: normalised.id,
-            },
-          })
-        }
+        if (isNew) raiseRejectionIssue(normalised, newSupplier)
       },
 
       deleteDelivery(id) {
         dispatch({ type: 'delivery/delete', id })
+      },
+
+      saveOrder(order) {
+        const current = data.supplierOrders.find((entry) => entry.id === order.id)
+        if (current && current.status !== 'open') return
+        dispatch({ type: 'order/save', order })
+      },
+
+      moveOrderDelivery(id, deliveryDate) {
+        const order = data.supplierOrders.find((entry) => entry.id === id)
+        if (!order || order.status !== 'open') return
+        // An order-by date after the new delivery date would make no sense.
+        const orderBy = order.orderBy && order.orderBy > deliveryDate ? undefined : order.orderBy
+        dispatch({ type: 'order/save', order: { ...order, deliveryDate, orderBy } })
+      },
+
+      cancelOrder(id) {
+        const order = data.supplierOrders.find((entry) => entry.id === id)
+        if (!order || order.status !== 'open') return
+        dispatch({
+          type: 'order/save',
+          order: { ...order, status: 'cancelled', cancelledAt: new Date().toISOString(), cancelledBy: activeStaff.id },
+        })
+      },
+
+      checkInOrder({ orderId, delivery, addToOrder }) {
+        const order = data.supplierOrders.find((entry) => entry.id === orderId)
+        const recorded: Delivery = {
+          ...delivery,
+          supplierId: order?.supplierId ?? delivery.supplierId,
+          orderId,
+          status: deriveDeliveryStatus(delivery.lines),
+        }
+        dispatch({ type: 'delivery/add', delivery: recorded })
+        raiseRejectionIssue(recorded)
+        // Already checked in or called off on another device: the delivery is still recorded.
+        if (order && order.status === 'open') {
+          dispatch({
+            type: 'order/save',
+            order: {
+              ...order,
+              status: 'received',
+              lines: [...order.lines, ...addToOrder],
+              receivedAt: recorded.receivedAt,
+              receivedBy: recorded.checkedBy,
+              deliveryId: recorded.id,
+            },
+          })
+        }
+        return recorded
       },
 
       recordChecklistRun(run) {

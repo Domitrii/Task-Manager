@@ -1,7 +1,14 @@
 import { useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { format } from 'date-fns'
 import { Flame, type LucideIcon, Package } from 'lucide-react'
-import { selectDailyCompletion, selectDashboard, selectLogsForDay, selectToday } from '@/data/selectors'
+import {
+  selectDailyCompletion,
+  selectDashboard,
+  selectLogsForDay,
+  selectOrdersToCheckIn,
+  selectToday,
+} from '@/data/selectors'
 import { useStore } from '@/data/store'
 import { formatTemp, formatTime } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
@@ -18,6 +25,7 @@ export function TodayPage() {
   const now = useNow()
   const { data, activeStaff } = useStore()
   const quickEntry = useQuickEntry()
+  const navigate = useNavigate()
 
   const today = useMemo(() => selectToday(data, now), [data, now])
   const week = useMemo(() => selectDailyCompletion(data, 7, now), [data, now])
@@ -34,6 +42,8 @@ export function TodayPage() {
   }, [data, now])
   const lastProbe = probesToday[0]
   const lastDelivery = summary.deliveriesToday[0]
+  const orders = useMemo(() => selectOrdersToCheckIn(data, now), [data, now])
+  const toCheckIn = orders.due.length + orders.overdue.length
 
   const glance: GlanceRow[] = [
     {
@@ -57,6 +67,18 @@ export function TodayPage() {
           : undefined,
       value: summary.deliveriesToday.length,
       to: '/deliveries',
+    },
+    {
+      label: 'Orders to check in',
+      detail:
+        orders.overdue.length > 0
+          ? `${orders.overdue.length} overdue`
+          : orders.due.length > 0
+            ? 'Arriving today'
+            : undefined,
+      value: toCheckIn,
+      to: '/deliveries',
+      attention: orders.overdue.length > 0 ? 'fail' : 'warn',
     },
     {
       label: 'Overdue tasks',
@@ -99,12 +121,16 @@ export function TodayPage() {
             <AnytimeRow
               icon={Package}
               title="Delivery"
-              detail={
+              detail={[
+                toCheckIn > 0 ? `${toCheckIn} order${toCheckIn === 1 ? '' : 's'} to check in.` : null,
                 lastDelivery
                   ? `${summary.deliveriesToday.length} today. Last: ${data.suppliers.find((supplier) => supplier.id === lastDelivery.supplierId)?.name} at ${formatTime(lastDelivery.receivedAt)}`
-                  : 'None received yet today'
-              }
-              onClick={quickEntry.recordDelivery}
+                  : 'None received yet today',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+              // Expected orders are checked in against the order, from Deliveries.
+              onClick={toCheckIn > 0 ? () => navigate('/deliveries') : quickEntry.recordDelivery}
             />
           </div>
         </section>

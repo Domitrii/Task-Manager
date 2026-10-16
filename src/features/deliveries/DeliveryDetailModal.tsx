@@ -1,14 +1,15 @@
-import { AlertTriangle, CalendarClock, FileText, Repeat, Thermometer, Truck, User } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { AlertTriangle, CalendarClock, ClipboardList, FileText, PackageX, Repeat, Thermometer, Truck, User } from 'lucide-react'
 import { staffName } from '@/data/selectors'
 import { useStore } from '@/data/store'
 import type { Delivery } from '@/data/types'
-import { deliveryTempLimit } from '@/lib/compliance'
-import { formatDate, formatDateTime, formatQuantity, formatTemp } from '@/lib/format'
+import { deliveryTempLimit, discrepancyCount, isDiscrepancy, isShort } from '@/lib/compliance'
+import { formatDate, formatDateTime, formatMoney, formatQuantity, formatTemp, formatWeekdayDate, perUnit } from '@/lib/format'
 import { cn, titleCase } from '@/lib/utils'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
-import { DeliveryStatusBadge } from '@/components/shared/StatusBadge'
+import { DeliveryStatusBadge, DiscrepancyBadge } from '@/components/shared/StatusBadge'
 
 export function DeliveryDetailModal({
   delivery,
@@ -26,6 +27,8 @@ export function DeliveryDetailModal({
 
   const supplier = data.suppliers.find((entry) => entry.id === delivery.supplierId)
   const rejected = delivery.lines.filter((line) => !line.accepted)
+  const order = delivery.orderId ? data.supplierOrders.find((entry) => entry.id === delivery.orderId) : undefined
+  const missing = delivery.notReceived ?? []
 
   return (
     <Modal
@@ -52,9 +55,19 @@ export function DeliveryDetailModal({
       <div className="space-y-5">
         <div className="flex flex-wrap items-center gap-2">
           <DeliveryStatusBadge status={delivery.status} />
+          <DiscrepancyBadge count={discrepancyCount(delivery)} />
           <Badge tone="neutral">
             {delivery.lines.length} line{delivery.lines.length === 1 ? '' : 's'}
           </Badge>
+          {order ? (
+            <Link
+              to={`/suppliers?order=${order.id}`}
+              className="text-brand-700 dark:text-brand-300 inline-flex items-center gap-1 text-xs font-medium hover:underline"
+            >
+              <ClipboardList className="size-3.5" />
+              {order.deliveryDate ? `Order for ${formatWeekdayDate(order.deliveryDate)}` : 'From an order'}
+            </Link>
+          ) : null}
           {delivery.vehicleTempOk === false ? (
             <Badge tone="warn" icon={<AlertTriangle className="size-3.5" />}>
               Vehicle temperature not correct
@@ -90,6 +103,24 @@ export function DeliveryDetailModal({
           </div>
         ) : null}
 
+        {missing.length > 0 ? (
+          <div className="border-warn-500/35 bg-warn-50 dark:bg-warn-500/8 rounded-lg border px-3.5 py-3">
+            <p className="text-warn-700 dark:text-warn-500 flex items-center gap-1.5 text-sm font-semibold">
+              <PackageX className="size-4" />
+              {missing.length} ordered item{missing.length === 1 ? '' : 's'} not received
+            </p>
+            <ul className="text-ink-muted mt-1.5 space-y-1 text-[13px]">
+              {missing.map((line) => (
+                <li key={line.id}>
+                  <span className="text-ink font-medium">{line.product}</span>,{' '}
+                  {formatQuantity(line.quantity, line.unit)}
+                  {line.note ? ` — ${line.note}` : ''}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
         <div>
           <h3 className="text-ink mb-2 text-sm font-semibold">Products received</h3>
           <div className="space-y-2">
@@ -102,19 +133,31 @@ export function DeliveryDetailModal({
                   key={line.id}
                   className={cn(
                     'rounded-lg border px-3.5 py-3',
-                    line.accepted ? 'border-line' : 'border-fail-500/35 bg-fail-50/40 dark:bg-fail-500/6',
+                    !line.accepted
+                      ? 'border-fail-500/35 bg-fail-50/40 dark:bg-fail-500/6'
+                      : isDiscrepancy(line)
+                        ? 'border-warn-500/40 bg-warn-50/70 dark:bg-warn-500/8'
+                        : 'border-line',
                   )}
                 >
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="text-ink text-sm font-medium">{line.product}</p>
                       <p className="text-ink-muted text-xs">
-                        {titleCase(line.category)} · {formatQuantity(line.quantity, line.unit)}
+                        {titleCase(line.category)} ·{' '}
+                        {line.orderedQuantity !== undefined && line.orderedQuantity !== line.quantity
+                          ? `Ordered ${formatQuantity(line.orderedQuantity, line.unit)} · received ${formatQuantity(line.quantity, line.unit)}`
+                          : formatQuantity(line.quantity, line.unit)}
+                        {line.unitPrice !== undefined ? ` · ${formatMoney(line.unitPrice)}/${perUnit(line.unit)}` : ''}
                       </p>
                     </div>
-                    <Badge tone={line.accepted ? 'pass' : 'fail'}>
-                      {line.accepted ? 'Accepted' : 'Rejected'}
-                    </Badge>
+                    <span className="flex flex-wrap gap-1">
+                      {line.extra ? <Badge tone="info">Extra</Badge> : null}
+                      {isShort(line) ? <Badge tone="warn">Short</Badge> : null}
+                      <Badge tone={line.accepted ? 'pass' : 'fail'}>
+                        {line.accepted ? 'Accepted' : 'Rejected'}
+                      </Badge>
+                    </span>
                   </div>
 
                   <div className="text-ink-muted mt-2.5 flex flex-wrap gap-x-5 gap-y-1 text-xs">
@@ -142,6 +185,9 @@ export function DeliveryDetailModal({
                     {line.bestBefore ? <span>Best before {formatDate(line.bestBefore)}</span> : null}
                   </div>
 
+                  {line.note ? (
+                    <p className="text-warn-700 dark:text-warn-500 mt-2 text-xs">Note: {line.note}</p>
+                  ) : null}
                   {line.rejectionReason ? (
                     <p className="text-fail-600 dark:text-fail-500 mt-2 text-xs">
                       Reason: {line.rejectionReason}
@@ -164,7 +210,7 @@ export function DeliveryDetailModal({
   )
 }
 
-function DetailRow({
+export function DetailRow({
   icon,
   label,
   value,

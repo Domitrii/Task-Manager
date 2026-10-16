@@ -279,6 +279,7 @@ export function buildDataFromSetupPack(pack: SetupPack, answers: SetupAnswers, n
     temperatureLogs: [],
     suppliers: [],
     deliveries: [],
+    supplierOrders: [],
     checklistRuns: [],
     issues: [],
     stock: [],

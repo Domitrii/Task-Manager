@@ -21,6 +21,8 @@ import type {
   StaffMember,
   StockItem,
   Supplier,
+  SupplierOrder,
+  SupplierOrderLine,
   Task,
   TemperatureLog,
   VenueSettings,
@@ -154,6 +156,31 @@ const productsBySupplier: Record<string, Array<Omit<DeliveryLine, 'id' | 'accept
     { product: 'Brioche buns', category: 'bakery', quantity: 120, unit: 'units' },
     { product: 'Sourdough loaves', category: 'bakery', quantity: 24, unit: 'units' },
   ],
+}
+
+/** £ per unit, roughly what a UK wholesaler charges. Orders drift a little either side of these. */
+const PRICES: Record<string, number> = {
+  'Chicken breast, skin-on': 7.4,
+  'Beef mince 20%': 6.2,
+  'Pork belly, boneless': 5.8,
+  'Dry-aged sirloin': 24.5,
+  'Sea bass fillets': 18.5,
+  'Cold-water prawns': 14.2,
+  'Scottish salmon side': 16.9,
+  'Baby spinach': 5.4,
+  'Vine tomatoes': 3.1,
+  'Maris Piper potatoes': 0.9,
+  'Mixed herbs': 12,
+  'Whole milk': 1.05,
+  'Double cream': 2.6,
+  'Unsalted butter': 6.1,
+  'Mature cheddar': 8.3,
+  'Rapeseed oil 20L': 28,
+  'Plain flour': 1.2,
+  'Skin-on fries': 2.4,
+  'Blue roll': 2.1,
+  'Brioche buns': 0.42,
+  'Sourdough loaves': 3.2,
 }
 
 const checklistTemplates: ChecklistTemplate[] = [
@@ -410,6 +437,176 @@ function buildDeliveries(now: Date): Delivery[] {
   return deliveries.sort((a, b) => b.receivedAt.localeCompare(a.receivedAt))
 }
 
+/**
+ * Supplier orders: about half the past deliveries arrived against one, plus an
+ * order in every other state — a draft, two expected (one weeks out), two due
+ * today, one overdue, one cancelled and one received with discrepancies.
+ * Uses its own PRNG so adding orders didn't reshuffle the rest of the demo.
+ */
+function buildOrders(now: Date, generated: Delivery[]): { orders: SupplierOrder[]; deliveries: Delivery[] } {
+  const orderRand = mulberry32(20261016)
+  const drift = (price: number) => Math.round(price * (0.94 + orderRand() * 0.12) * 100) / 100
+  const today = toISODate(now)
+  const day = (offset: number) => toISODate(addDays(now, offset))
+  const orders: SupplierOrder[] = []
+
+  const orderLine = (product: string, quantity: number, price = true): SupplierOrderLine => {
+    const entry = Object.values(productsBySupplier).flat().find((candidate) => candidate.product === product)
+    return {
+      id: createId('ol'),
+      product,
+      category: entry?.category ?? 'ambient',
+      quantity,
+      unit: entry?.unit ?? 'units',
+      unitPrice: price ? drift(PRICES[product] ?? 1) : undefined,
+    }
+  }
+
+  // Past deliveries, every other one checked in against an order placed a day or three before.
+  // Today's are left as they came, so today's orders are the ones still waiting.
+  const deliveries = generated.map((delivery, index) => {
+    if (index % 2 === 1 || toISODate(new Date(delivery.receivedAt)) === today) return delivery
+    const receivedAt = new Date(delivery.receivedAt)
+    const lines = delivery.lines.map((line) => ({
+      ...line,
+      orderLineId: createId('ol'),
+      orderedQuantity: line.quantity,
+      unitPrice: drift(PRICES[line.product] ?? 1),
+    }))
+    const deliveryDate = toISODate(receivedAt)
+    const order: SupplierOrder = {
+      id: createId('so'),
+      supplierId: delivery.supplierId,
+      status: 'received',
+      lines: lines.map((line) => ({
+        id: line.orderLineId,
+        product: line.product,
+        category: line.category,
+        quantity: line.quantity,
+        unit: line.unit,
+        unitPrice: line.unitPrice,
+      })),
+      deliveryDate,
+      orderBy: orderRand() < 0.6 ? toISODate(subDays(receivedAt, 1)) : undefined,
+      createdAt: subHours(receivedAt, 24 + Math.floor(orderRand() * 48)).toISOString(),
+      createdBy: 'st_amara',
+      receivedAt: delivery.receivedAt,
+      receivedBy: delivery.checkedBy,
+      deliveryId: delivery.id,
+    }
+    orders.push(order)
+    return { ...delivery, lines, orderId: order.id }
+  })
+
+  // Received six days ago with a bit of everything worth a second look.
+  const shortAt = subDays(now, 6)
+  shortAt.setHours(8, 42, 0, 0)
+  const ordered = [
+    orderLine('Chicken breast, skin-on', 12),
+    orderLine('Beef mince 20%', 15),
+    orderLine('Pork belly, boneless', 8),
+    orderLine('Dry-aged sirloin', 6),
+  ]
+  const [chicken, mince, pork, sirloin] = ordered
+  const received = (line: SupplierOrderLine, quantity: number, temperature: number, note?: string): DeliveryLine => ({
+    id: createId('dl'),
+    product: line.product,
+    category: line.category,
+    quantity,
+    unit: line.unit,
+    temperature,
+    packaging: 'good',
+    useBy: toISODate(addDays(shortAt, 5)),
+    accepted: true,
+    orderLineId: line.id,
+    orderedQuantity: line.quantity,
+    unitPrice: line.unitPrice,
+    note,
+  })
+  const shortDelivery: Delivery = {
+    id: createId('dv'),
+    supplierId: 'sup_meat',
+    receivedAt: shortAt.toISOString(),
+    checkedBy: 'st_lena',
+    status: 'accepted',
+    lines: [
+      received(chicken, 12, 3.4),
+      received(mince, 11, 2.9, 'Short by 4 kg, rest to follow on Tuesday'),
+      received(sirloin, 6, 3.1, 'Outer box crushed, meat inside fine'),
+      {
+        id: createId('dl'),
+        product: 'Lamb shoulder',
+        category: 'chilled',
+        quantity: 4,
+        unit: 'kg',
+        temperature: 3.6,
+        packaging: 'good',
+        useBy: toISODate(addDays(shortAt, 6)),
+        accepted: true,
+        unitPrice: 9.8,
+        extra: true,
+      },
+    ],
+    notReceived: [{ ...pork, note: 'Out of stock at their depot' }],
+    deliveryNote: 'DN-55102',
+    driverName: 'Kev M.',
+    vehicleTempOk: true,
+  }
+  orders.push({
+    id: createId('so'),
+    supplierId: 'sup_meat',
+    status: 'received',
+    lines: ordered,
+    deliveryDate: toISODate(shortAt),
+    orderBy: toISODate(subDays(shortAt, 1)),
+    createdAt: subDays(shortAt, 3).toISOString(),
+    createdBy: 'st_amara',
+    receivedAt: shortDelivery.receivedAt,
+    receivedBy: shortDelivery.checkedBy,
+    deliveryId: shortDelivery.id,
+  })
+  shortDelivery.orderId = orders.at(-1)?.id
+  deliveries.push(shortDelivery)
+
+  const open = (supplierId: string, lines: SupplierOrderLine[], dates: Pick<SupplierOrder, 'deliveryDate' | 'orderBy'>, createdDaysAgo: number) =>
+    orders.push({
+      id: createId('so'),
+      supplierId,
+      status: 'open',
+      lines,
+      ...dates,
+      createdAt: subHours(now, createdDaysAgo * 24 + 3).toISOString(),
+      createdBy: 'st_amara',
+    })
+
+  open('sup_bakery', [orderLine('Brioche buns', 120), orderLine('Sourdough loaves', 24)], {}, 1)
+  open('sup_meat', [orderLine('Chicken breast, skin-on', 14), orderLine('Beef mince 20%', 15), orderLine('Dry-aged sirloin', 4)], { deliveryDate: day(4), orderBy: day(1) }, 2)
+  open('sup_dairy', [orderLine('Whole milk', 60), orderLine('Double cream', 16), orderLine('Mature cheddar', 8), orderLine('Unsalted butter', 6, false)], { deliveryDate: day(21) }, 0)
+  open('sup_produce', [orderLine('Vine tomatoes', 10), orderLine('Baby spinach', 4), orderLine('Maris Piper potatoes', 25), orderLine('Mixed herbs', 1.5)], { deliveryDate: today, orderBy: day(-1) }, 3)
+  open('sup_fish', [orderLine('Sea bass fillets', 7), orderLine('Scottish salmon side', 9), orderLine('Cold-water prawns', 5)], { deliveryDate: today }, 2)
+  open('sup_dry', [orderLine('Rapeseed oil 20L', 2), orderLine('Plain flour', 16), orderLine('Skin-on fries', 20), orderLine('Blue roll', 12)], { deliveryDate: day(-2), orderBy: day(-4) }, 6)
+
+  const cancelledAt = subDays(now, 9)
+  orders.push({
+    id: createId('so'),
+    supplierId: 'sup_fish',
+    status: 'cancelled',
+    lines: [orderLine('Sea bass fillets', 10), orderLine('Cold-water prawns', 4)],
+    deliveryDate: day(-8),
+    orderBy: day(-9),
+    notes: 'Menu change: sea bass off the specials this week.',
+    createdAt: subDays(now, 11).toISOString(),
+    createdBy: 'st_amara',
+    cancelledAt: cancelledAt.toISOString(),
+    cancelledBy: 'st_amara',
+  })
+
+  return {
+    orders: orders.sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    deliveries: deliveries.sort((a, b) => b.receivedAt.localeCompare(a.receivedAt)),
+  }
+}
+
 function buildChecklistRuns(now: Date): ChecklistRun[] {
   const runs: ChecklistRun[] = []
 
@@ -535,7 +732,8 @@ function buildTasks(now: Date): Task[] {
 /** Builds a complete demo dataset relative to `now`. */
 export function createSeedData(now: Date = new Date()): AppData {
   const temperatureLogs = buildTemperatureLogs(now)
-  const deliveries = buildDeliveries(now)
+  const generated = buildDeliveries(now)
+  const { orders: supplierOrders, deliveries } = buildOrders(now, generated)
 
   return {
     staff,
@@ -543,9 +741,10 @@ export function createSeedData(now: Date = new Date()): AppData {
     temperatureLogs,
     suppliers,
     deliveries,
+    supplierOrders,
     checklistTemplates,
     checklistRuns: buildChecklistRuns(now),
-    issues: buildIssues(now, temperatureLogs, deliveries),
+    issues: buildIssues(now, temperatureLogs, generated),
     stock: stock.map((entry) => ({
       ...entry,
       // Hours rather than whole days, so no item reads as "counted 3 seconds ago".

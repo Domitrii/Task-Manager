@@ -10,6 +10,7 @@ import {
   buildCheckSlots,
   daysUntil,
   isSameLocalDay,
+  orderState,
   isTrackedWindow,
   periodInterval,
   startOfDayLocal,
@@ -22,12 +23,14 @@ import type {
   CheckPeriodWindow,
   ChecklistTemplate,
   Delivery,
+  DeliveryLineCategory,
   FoodSafetyIssue,
   ID,
   MonitoredCategory,
   MonitoredItem,
   StaffMember,
   StockItem,
+  SupplierOrder,
   Task,
   TemperatureLog,
 } from './types'
@@ -134,6 +137,112 @@ export function selectExpiringStock(
     }
   }
   return results.sort((a, b) => a.daysLeft - b.daysLeft)
+}
+
+/* -------------------------------------------------------------------------- */
+/* Supplier orders                                                             */
+/* -------------------------------------------------------------------------- */
+
+/** Orders arriving today, and ones whose day has passed without being checked in, oldest first. */
+export function selectOrdersToCheckIn(data: AppData, now: Date): { due: SupplierOrder[]; overdue: SupplierOrder[] } {
+  const due: SupplierOrder[] = []
+  const overdue: SupplierOrder[] = []
+  for (const order of data.supplierOrders) {
+    const state = orderState(order, now)
+    if (state === 'due') due.push(order)
+    else if (state === 'overdue') overdue.push(order)
+  }
+  const byDate = (a: SupplierOrder, b: SupplierOrder) =>
+    (a.deliveryDate ?? '').localeCompare(b.deliveryDate ?? '') || a.createdAt.localeCompare(b.createdAt)
+  return { due: due.sort(byDate), overdue: overdue.sort(byDate) }
+}
+
+/** Soonest delivery first; drafts, with no date yet, after every dated order. */
+function bySoonestDelivery(a: SupplierOrder, b: SupplierOrder): number {
+  if (a.deliveryDate === b.deliveryDate) return 0
+  if (!a.deliveryDate) return 1
+  if (!b.deliveryDate) return -1
+  return a.deliveryDate < b.deliveryDate ? -1 : 1
+}
+
+/**
+ * Orders still being planned or waiting for their day, from every supplier:
+ * soonest delivery first, then drafts without a date. On its delivery day an
+ * order leaves this list for the Deliveries page.
+ */
+export function selectUpcomingOrders(data: AppData, now: Date): SupplierOrder[] {
+  return data.supplierOrders
+    .filter((order) => {
+      const state = orderState(order, now)
+      return state === 'draft' || state === 'expected'
+    })
+    .sort((a, b) => bySoonestDelivery(a, b) || a.createdAt.localeCompare(b.createdAt))
+}
+
+/** When an order happened, for ordering history: when it arrived or was called off, else when it was made. */
+export function orderHistoryDate(order: SupplierOrder): string {
+  return order.receivedAt ?? order.cancelledAt ?? order.createdAt
+}
+
+export interface SupplierOrderBook {
+  /** Drafts and expected orders: soonest delivery first, then drafts. */
+  open: SupplierOrder[]
+  /** Due today or overdue. They're checked in from the Deliveries page. */
+  arriving: SupplierOrder[]
+  /** Received and cancelled, newest first. */
+  history: SupplierOrder[]
+}
+
+export function selectSupplierOrders(data: AppData, supplierId: ID, now: Date): SupplierOrderBook {
+  const book: SupplierOrderBook = { open: [], arriving: [], history: [] }
+  for (const order of data.supplierOrders) {
+    if (order.supplierId !== supplierId) continue
+    const state = orderState(order, now)
+    if (state === 'draft' || state === 'expected') book.open.push(order)
+    else if (state === 'due' || state === 'overdue') book.arriving.push(order)
+    else book.history.push(order)
+  }
+  book.open.sort(bySoonestDelivery)
+  book.history.sort((a, b) => orderHistoryDate(b).localeCompare(orderHistoryDate(a)))
+  return book
+}
+
+/** Product names match ignoring case and surrounding spaces, as supplier names do. */
+export function productKey(name: string): string {
+  return name.trim().toLowerCase()
+}
+
+export interface RememberedPrice {
+  /** As it was last written. */
+  product: string
+  unitPrice: number
+  unit: string
+  category: DeliveryLineCategory
+}
+
+/**
+ * The price last used for each product on this supplier's orders, keyed by
+ * `productKey`. For each product it's the most recent order that has it with a
+ * price, by delivery date (or the day it was made, for a draft). Cancelled
+ * orders don't count: nobody paid those prices. Nothing is stored for this;
+ * every order keeps its own copy of its prices.
+ */
+export function selectLastPrices(data: AppData, supplierId: ID, excludeOrderId?: ID): Map<string, RememberedPrice> {
+  const recency = (order: SupplierOrder) =>
+    `${order.deliveryDate ?? toISODate(parseISO(order.createdAt))}|${order.createdAt}`
+  const orders = data.supplierOrders
+    .filter((order) => order.supplierId === supplierId && order.status !== 'cancelled' && order.id !== excludeOrderId)
+    .sort((a, b) => recency(b).localeCompare(recency(a)))
+
+  const prices = new Map<string, RememberedPrice>()
+  for (const order of orders) {
+    for (const line of order.lines) {
+      const key = productKey(line.product)
+      if (!key || line.unitPrice === undefined || prices.has(key)) continue
+      prices.set(key, { product: line.product.trim(), unitPrice: line.unitPrice, unit: line.unit, category: line.category })
+    }
+  }
+  return prices
 }
 
 /* -------------------------------------------------------------------------- */

@@ -8,6 +8,7 @@ import { DeliveriesPage } from '@/features/deliveries/DeliveriesPage'
 import { FoodSafetyPage } from '@/features/checklists/FoodSafetyPage'
 import { ChecklistsPage } from '@/features/checklists/pages'
 import { StockPage } from '@/features/stock/StockPage'
+import { SuppliersPage } from '@/features/suppliers/SuppliersPage'
 import { TasksPage } from '@/features/tasks/TasksPage'
 import { ScanPage } from '@/features/qr/ScanPage'
 import { TodayPage } from '@/features/today/TodayPage'
@@ -95,6 +96,7 @@ export function App() {
           />
         </Route>
         <Route path="deliveries" element={<DeliveriesPage />} />
+        <Route path="suppliers" element={<SuppliersPage />} />
         <Route path="food-safety" element={<FoodSafetyPage />} />
         <Route path="checklists">
           <Route index element={<ChecklistsPage view="all" />} />

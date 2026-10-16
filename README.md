@@ -99,7 +99,7 @@ and no screen knows which. That is also the seam integrations arrive through:
 |---|---|
 | Wireless temperature probes | Feed readings in as `TemperatureLog` records; the pass/fail rules already apply to them |
 | EPOS / sales data | A new slice on `AppData` plus a section under `features/` |
-| Supplier ordering | Replace manual `Delivery` entry with imported records; the review UI is unchanged |
+| Supplier portals / EDI | Feed orders in as `SupplierOrder` records; checking them in and the review UI are unchanged |
 
 `data/store.tsx` wraps the repository in a reducer exposed through context. Mutations are
 intent-shaped (`recordTemperature`, `saveDelivery`, `recordChecklistRun`) rather than generic
@@ -198,6 +198,40 @@ logging page that saves through the same `recordTemperature` as the Log sheet.
 > signs in first and then lands on the label's page. Without Supabase, records live in one
 > browser, so a label scanned on any other phone opens a "not set up on this device" page.
 
+### Supplier orders
+
+**Suppliers** (`/suppliers`) is where deliveries are planned. **New order** asks for the supplier,
+the delivery date, an optional order-by date, the items (quantity, unit, £ price) and notes. Until
+its delivery day, every order is laid out in full under *Upcoming deliveries*, with its items,
+total, notes and who placed it. Below that, each supplier's card has its past orders. Managers can
+change an order while it's open, repeat any past order as a new one, and cancel orders; cancelled
+ones stay in the history. Suppliers themselves are still edited in Settings.
+
+**Deliveries** is for today: it opens on today's list, under the orders due to be checked in.
+All deliveries, rejections and the use-by watch are the other tabs.
+
+- **Only `open`, `received` or `cancelled` is stored.** Draft (no delivery date yet), expected, due
+  (delivery date is today) and overdue come from `orderState` in `lib/compliance.ts`, so an order
+  rolls over at midnight without anyone touching it.
+- **Prices are copied onto each order line**, so editing a later order never changes an old one.
+  Naming a product the supplier has sold before fills in its last price, unit and category from
+  that supplier's most recent order with it (`selectLastPrices`; cancelled orders don't count).
+  Nothing is stored for this.
+- **On its delivery day an order moves to Deliveries**, in a "Due today" section at the top.
+  Overdue ones turn red there, and a manager can move the date or cancel. **Anyone can check an
+  order in:** one tap per item, a temperature for anything probed, details (quantity received,
+  a note, packaging, dates, accept or reject) on demand, and extras the driver brought, which can
+  be moved onto the order. Completing it records an ordinary `Delivery` with `orderId`, in the name
+  of whoever checked it in, so rejections still raise issues and the use-by watch and reports
+  still see it. Ordered items that didn't come go in `Delivery.notReceived`, kept apart from
+  `lines`, so line counts and rejection rates only count what arrived.
+- **A discrepancy** is an item that didn't arrive, arrived short, or has a note. Discrepancies are
+  amber in the order and delivery details, and the order gets a Discrepancies badge.
+- The Deliveries nav badge counts orders waiting to be checked in, red when one is overdue.
+  Rejections aren't counted there because each one already raises an issue.
+- Ordering is manager-only in the app, using the same rule as changing temperature readings. The
+  server doesn't enforce it: its trigger only guards readings.
+
 ### The compliance rules
 
 `lib/compliance.ts` is the single source of truth for every judgement the app makes:
@@ -251,6 +285,10 @@ meaning never rests on hue alone.
 - **Nothing is pre-ticked.** Checklists start unanswered and a failed item needs a note before
   it can be signed off — a pre-filled compliance record is worth nothing to an inspector.
 - **Corrective actions are mandatory on a failed reading**, for the same reason.
+- **Check-in temperatures start empty and are required.** The plain "Record delivery" form still
+  starts probed lines at 0°C. A line the rules rejected (too warm, damaged packaging) goes back to
+  accepted when the reading is corrected, unless someone chose the reason themselves; typing
+  "-18" passes through "-1" on the way.
 - Demo data is seeded from a fixed PRNG so a regenerated set stays comparable run to run.
   Today is deliberately left partially complete, with a few genuinely missed checks, so the
   dashboard shows real "due" and "overdue" states rather than a perfect green board.

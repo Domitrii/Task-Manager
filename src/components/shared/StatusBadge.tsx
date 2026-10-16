@@ -1,6 +1,6 @@
-import { AlertTriangle, Ban, CheckCircle2, CircleDashed, Clock, XCircle } from 'lucide-react'
+import { AlertTriangle, Ban, CalendarClock, CheckCircle2, CircleDashed, Clock, PencilLine, Truck, XCircle } from 'lucide-react'
 import { Badge, type BadgeTone } from '@/components/ui/Badge'
-import type { CheckSlotState } from '@/lib/compliance'
+import type { CheckSlotState, OrderState } from '@/lib/compliance'
 import type { CheckOutcome, DeliveryStatus, IssueSeverity, IssueStatus, TaskStatus } from '@/data/types'
 
 const ICON = 'size-3.5'
@@ -45,6 +45,34 @@ export function DeliveryStatusBadge({ status }: { status: DeliveryStatus }) {
   return (
     <Badge tone={tone} icon={<Icon className={ICON} />}>
       {label}
+    </Badge>
+  )
+}
+
+const ORDER_META: Record<OrderState, { tone: BadgeTone; label: string; Icon: typeof CheckCircle2 }> = {
+  draft: { tone: 'neutral', label: 'Draft', Icon: PencilLine },
+  expected: { tone: 'info', label: 'Expected delivery', Icon: CalendarClock },
+  due: { tone: 'brand', label: 'Due today', Icon: Truck },
+  overdue: { tone: 'fail', label: 'Overdue', Icon: AlertTriangle },
+  received: { tone: 'pass', label: 'Received', Icon: CheckCircle2 },
+  cancelled: { tone: 'neutral', label: 'Cancelled', Icon: Ban },
+}
+
+export function OrderStatusBadge({ state }: { state: OrderState }) {
+  const { tone, label, Icon } = ORDER_META[state]
+  return (
+    <Badge tone={tone} icon={<Icon className={ICON} />}>
+      {label}
+    </Badge>
+  )
+}
+
+/** Something ordered didn't arrive, arrived short, or has a note on it. */
+export function DiscrepancyBadge({ count }: { count: number }) {
+  if (count === 0) return null
+  return (
+    <Badge tone="warn" icon={<AlertTriangle className={ICON} />}>
+      Discrepancies{count > 1 ? ` (${count})` : ''}
     </Badge>
   )
 }

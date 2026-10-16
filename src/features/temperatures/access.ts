@@ -21,10 +21,15 @@ export interface ReadingAccess {
  * With accounts, managers are the owner and whoever the owner chooses. On a
  * single device without accounts, anyone down as a Manager on the staff list.
  */
-export function useReadingAccess(): ReadingAccess {
+export function useIsManager(): boolean {
   const sync = useSync()
   const { activeStaff } = useStore()
-  const manager = sync ? sync.isManager : activeStaff.role === 'manager'
+  return sync ? sync.isManager : activeStaff.role === 'manager'
+}
+
+export function useReadingAccess(): ReadingAccess {
+  const { activeStaff } = useStore()
+  const manager = useIsManager()
   const staffId = activeStaff.id
   return useMemo(() => ({ manager, staffId }), [manager, staffId])
 }

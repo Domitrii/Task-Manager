@@ -9,7 +9,7 @@ import {
 } from '@/data/selectors'
 import { useStore } from '@/data/store'
 import type { Delivery, VenueSettings } from '@/data/types'
-import { deliveryTempLimit } from '@/lib/compliance'
+import { deliveryTempLimit, discrepancyCount } from '@/lib/compliance'
 import { formatDate, formatRelativeDay, formatTemp } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
 import { cn } from '@/lib/utils'
@@ -23,9 +23,10 @@ import { Tabs } from '@/components/ui/Tabs'
 import { CardList, TableWrap, Td, Th, Tr } from '@/components/ui/Table'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { StatCard } from '@/components/shared/StatCard'
-import { DeliveryStatusBadge } from '@/components/shared/StatusBadge'
+import { DeliveryStatusBadge, DiscrepancyBadge } from '@/components/shared/StatusBadge'
 import { DeliveryDetailModal } from './DeliveryDetailModal'
 import { DeliveryFormModal } from './DeliveryFormModal'
+import { DueOrders } from './DueOrders'
 
 type TabKey = 'all' | 'today' | 'rejections' | 'useby'
 
@@ -46,7 +47,8 @@ export function DeliveriesPage() {
   const { data } = useStore()
   const [searchParams, setSearchParams] = useSearchParams()
 
-  const [tab, setTab] = useState<TabKey>('all')
+  // Today's page first; history, rejections and the use-by watch are a tab away.
+  const [tab, setTab] = useState<TabKey>('today')
   const [supplierFilter, setSupplierFilter] = useState('all')
   const [query, setQuery] = useState('')
   const [editing, setEditing] = useState<Delivery | undefined>(undefined)
@@ -107,7 +109,7 @@ export function DeliveriesPage() {
     <div className="space-y-5">
       <PageHeader
         title="Deliveries & goods receiving"
-        description="Every delivery checked in by hand: temperatures, packaging condition, dates and who signed for it."
+        description="Today’s deliveries: check in the orders due today, and record anything that turns up without one. Past deliveries are in the tabs below."
         actions={
           <Button
             variant="primary"
@@ -122,6 +124,8 @@ export function DeliveriesPage() {
           </Button>
         }
       />
+
+      <DueOrders />
 
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <StatCard
@@ -147,8 +151,9 @@ export function DeliveriesPage() {
         <StatCard
           label="Active suppliers"
           value={data.suppliers.filter((supplier) => supplier.active).length}
-          sublabel="Manually maintained in settings"
+          sublabel="Orders and history on Suppliers"
           icon={<Truck className="size-4" />}
+          to="/suppliers"
         />
       </div>
 
@@ -158,8 +163,8 @@ export function DeliveriesPage() {
             value={tab}
             onChange={setTab}
             options={[
-              { value: 'all', label: 'All deliveries', count: data.deliveries.length },
               { value: 'today', label: 'Today', count: today.length },
+              { value: 'all', label: 'All deliveries', count: data.deliveries.length },
               { value: 'rejections', label: 'Rejections', count: rejected.length },
               { value: 'useby', label: 'Use-by watch', count: expiring.length },
             ]}
@@ -198,8 +203,12 @@ export function DeliveriesPage() {
             {filtered.length === 0 ? (
               <EmptyState
                 icon={<Package className="size-5" />}
-                title="No deliveries to show"
-                description="Try a different filter, or record the delivery that has just arrived."
+                title={tab === 'today' && !query && supplierFilter === 'all' ? 'Nothing received yet today' : 'No deliveries to show'}
+                description={
+                  tab === 'today' && !query && supplierFilter === 'all'
+                    ? 'Check in an order when it arrives, or record a delivery that came without one.'
+                    : 'Try a different filter, or record the delivery that has just arrived.'
+                }
                 action={
                   <Button
                     variant="primary"
@@ -226,9 +235,10 @@ export function DeliveriesPage() {
                           onClick={() => setSelectedId(delivery.id)}
                           className="hover:bg-surface-muted/70 min-w-0 flex-1 py-3 pl-4 text-left transition-colors"
                         >
-                          <span className="flex items-center gap-2">
+                          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
                             <span className="text-ink min-w-0 truncate text-sm font-medium">{supplier?.name}</span>
                             <DeliveryStatusBadge status={delivery.status} />
+                            <DiscrepancyBadge count={discrepancyCount(delivery)} />
                           </span>
                           <span className="text-ink-muted mt-0.5 block text-xs">
                             {formatRelativeDay(delivery.receivedAt)} · {delivery.lines.length} line
@@ -320,7 +330,10 @@ export function DeliveriesPage() {
                             )}
                           </Td>
                           <Td>
-                            <DeliveryStatusBadge status={delivery.status} />
+                            <span className="flex flex-wrap gap-1">
+                              <DeliveryStatusBadge status={delivery.status} />
+                              <DiscrepancyBadge count={discrepancyCount(delivery)} />
+                            </span>
                           </Td>
                           <Td className="hidden xl:table-cell">
                             <span className="flex items-center gap-2">

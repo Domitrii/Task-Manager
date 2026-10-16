@@ -15,6 +15,7 @@ import type {
   ISODate,
   ISODateTime,
   MonitoredItem,
+  SupplierOrder,
   TemperatureLog,
   VenueSettings,
 } from '@/data/types'
@@ -216,6 +217,61 @@ export function deriveDeliveryStatus(lines: DeliveryLine[]): Delivery['status'] 
   if (rejected === 0) return 'accepted'
   if (rejected === lines.length) return 'rejected'
   return 'partially_rejected'
+}
+
+/* -------------------------------------------------------------------------- */
+/* Supplier orders                                                             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Where an order stands. `draft` has no delivery date yet; an open order with
+ * one is `expected` before that day, `due` on it and `overdue` after it until
+ * someone checks it in. Worked out from the date each time, so an order rolls
+ * over to due at midnight without anyone touching it.
+ */
+export type OrderState = 'draft' | 'expected' | 'due' | 'overdue' | 'received' | 'cancelled'
+
+export function orderState(order: Pick<SupplierOrder, 'status' | 'deliveryDate'>, now: Date): OrderState {
+  if (order.status === 'received') return 'received'
+  if (order.status === 'cancelled') return 'cancelled'
+  if (!order.deliveryDate) return 'draft'
+  const today = toISODate(now)
+  if (order.deliveryDate === today) return 'due'
+  return order.deliveryDate < today ? 'overdue' : 'expected'
+}
+
+/** Still being planned or waiting to arrive, so a manager can change anything on it. */
+export function isOpenOrderState(state: OrderState): boolean {
+  return state !== 'received' && state !== 'cancelled'
+}
+
+/** What priced lines come to, and how many lines have no price yet. */
+export function orderTotal(lines: Array<{ quantity: number; unitPrice?: number }>): { total: number; unpriced: number } {
+  let total = 0
+  let unpriced = 0
+  for (const line of lines) {
+    if (line.unitPrice === undefined) unpriced += 1
+    else total += line.quantity * line.unitPrice
+  }
+  return { total: Math.round(total * 100) / 100, unpriced }
+}
+
+/** Less arrived than was ordered. */
+export function isShort(line: Pick<DeliveryLine, 'quantity' | 'orderedQuantity'>): boolean {
+  return line.orderedQuantity !== undefined && line.quantity < line.orderedQuantity - 1e-9
+}
+
+/**
+ * A received line worth a second look: it arrived short or someone left a
+ * note on it. Items that never arrived are discrepancies too; they're kept in
+ * `Delivery.notReceived`.
+ */
+export function isDiscrepancy(line: DeliveryLine): boolean {
+  return isShort(line) || Boolean(line.note)
+}
+
+export function discrepancyCount(delivery: Pick<Delivery, 'lines' | 'notReceived'>): number {
+  return (delivery.notReceived?.length ?? 0) + delivery.lines.filter(isDiscrepancy).length
 }
 
 /* -------------------------------------------------------------------------- */

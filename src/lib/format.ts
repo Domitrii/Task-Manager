@@ -20,6 +20,11 @@ export function formatDateShort(value: ISODateTime | ISODate): string {
   return format(parseISO(value), 'd MMM')
 }
 
+/** "Thu 22 Oct" — for dates a few days or weeks either side of today. */
+export function formatWeekdayDate(value: ISODate | ISODateTime): string {
+  return format(parseISO(value), 'EEE d MMM')
+}
+
 export function formatDateTime(value: ISODateTime): string {
   return format(parseISO(value), 'd MMM yyyy, HH:mm')
 }
@@ -39,6 +44,11 @@ export function formatAgo(value: ISODateTime): string {
 export function formatQuantity(quantity: number, unit: string): string {
   const rounded = Math.round(quantity * 100) / 100
   return `${rounded} ${unit}`
+}
+
+/** A unit after "per" or "/": "units" → "unit", "litres" → "litre"; "kg" stays "kg". */
+export function perUnit(unit: string): string {
+  return unit.length > 2 && unit.endsWith('s') ? unit.slice(0, -1) : unit
 }
 
 export function formatMoney(value: number, currency = 'GBP'): string {

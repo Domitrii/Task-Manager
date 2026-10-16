@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import { useStore } from '@/data/store'
-import { selectOpenIssues, selectOverdueTasks, selectRejectedDeliveries, selectToday } from '@/data/selectors'
+import { selectOpenIssues, selectOrdersToCheckIn, selectOverdueTasks, selectToday } from '@/data/selectors'
 import type { ID } from '@/data/types'
 import { toISODate } from '@/lib/compliance'
 import { useNow } from '@/lib/useNow'
@@ -47,11 +47,16 @@ export function AppShell() {
 
   const counters = useMemo<NavCounters>(() => {
     const today = selectToday(data, now)
+    const orders = selectOrdersToCheckIn(data, now)
     return {
       today: { value: today.missed + today.due, tone: today.missed > 0 ? 'fail' : 'warn' },
       openIssues: { value: selectOpenIssues(data).length, tone: 'fail' },
       openTasks: { value: selectOverdueTasks(data, now).length, tone: 'warn' },
-      rejectedDeliveries: { value: selectRejectedDeliveries(data, 7, now).length, tone: 'warn' },
+      // Rejections aren't counted here: each one raises an issue, which the Issues badge counts.
+      ordersToCheckIn: {
+        value: orders.due.length + orders.overdue.length,
+        tone: orders.overdue.length > 0 ? 'fail' : 'warn',
+      },
     }
   }, [data, now])
 

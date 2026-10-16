@@ -149,6 +149,21 @@ export interface DeliveryLine {
   bestBefore?: ISODate
   accepted: boolean
   rejectionReason?: string
+  /** On a delivery checked in against an order: the order line this arrived for. */
+  orderLineId?: ID
+  /** What the order asked for. `quantity` is what actually arrived. */
+  orderedQuantity?: number
+  /** £ per unit, from the order or typed in for an extra. */
+  unitPrice?: number
+  /** Anything worth knowing about what arrived: damaged, wrong item, short… */
+  note?: string
+  /** Brought on the day without being on the order, and left off it. */
+  extra?: boolean
+}
+
+/** An ordered item that didn't arrive. */
+export interface MissingOrderLine extends SupplierOrderLine {
+  note?: string
 }
 
 export interface Delivery {
@@ -157,12 +172,64 @@ export interface Delivery {
   receivedAt: ISODateTime
   checkedBy: ID
   status: DeliveryStatus
+  /** What arrived and was checked. Ordered items that never came are in `notReceived`. */
   lines: DeliveryLine[]
   deliveryNote?: string
   driverName?: string
   /** Was the delivery vehicle at the right temperature on arrival? */
   vehicleTempOk?: boolean
   notes?: string
+  /** The supplier order this was checked in against. Absent for deliveries that came without one. */
+  orderId?: ID
+  /**
+   * Ordered items that didn't arrive. Kept apart from `lines` so everything
+   * that counts lines (reports, rejection rates, the use-by watch) still counts
+   * only goods that were actually received.
+   */
+  notReceived?: MissingOrderLine[]
+}
+
+/* -------------------------------------------------------------------------- */
+/* Supplier orders                                                             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Only what can't be worked out from the dates. Whether an open order is a
+ * draft, expected, due today or overdue depends on its delivery date and the
+ * time now, so it is derived (`orderState` in `lib/compliance.ts`), never stored.
+ */
+export type SupplierOrderStatus = 'open' | 'received' | 'cancelled'
+
+export interface SupplierOrderLine {
+  id: ID
+  product: string
+  category: DeliveryLineCategory
+  quantity: number
+  unit: string
+  /** £ per unit, copied onto the line so editing later orders never changes this one. Absent when not known yet. */
+  unitPrice?: number
+}
+
+export interface SupplierOrder {
+  id: ID
+  supplierId: ID
+  status: SupplierOrderStatus
+  lines: SupplierOrderLine[]
+  /** When the supplier says it will arrive, venue-local. Absent while the order is a draft. */
+  deliveryDate?: ISODate
+  /** The last day items can be added or changed with the supplier. Absent means no deadline. */
+  orderBy?: ISODate
+  notes?: string
+  createdAt: ISODateTime
+  createdBy: ID
+  /** The order this one was repeated from. That order is never changed. */
+  repeatOf?: ID
+  receivedAt?: ISODateTime
+  receivedBy?: ID
+  /** The delivery recorded when it was checked in. */
+  deliveryId?: ID
+  cancelledAt?: ISODateTime
+  cancelledBy?: ID
 }
 
 /* -------------------------------------------------------------------------- */
@@ -409,6 +476,7 @@ export interface AppData {
   temperatureLogs: TemperatureLog[]
   suppliers: Supplier[]
   deliveries: Delivery[]
+  supplierOrders: SupplierOrder[]
   checklistTemplates: ChecklistTemplate[]
   checklistRuns: ChecklistRun[]
   issues: FoodSafetyIssue[]

@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { format } from 'date-fns'
-import { AlertTriangle, Plus, Trash2 } from 'lucide-react'
+import { AlertTriangle, ClipboardList, Plus, Trash2 } from 'lucide-react'
+import { selectOrdersToCheckIn } from '@/data/selectors'
 import { useStore } from '@/data/store'
 import type { Delivery, DeliveryLine, DeliveryLineCategory, Supplier } from '@/data/types'
 import { deliveryLineConcern, deliveryTempLimit, deriveDeliveryStatus } from '@/lib/compliance'
@@ -10,29 +12,10 @@ import { Button, IconButton } from '@/components/ui/Button'
 import { Checkbox, Field, Select, TextInput, Textarea } from '@/components/ui/Field'
 import { Modal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
+import { AcceptanceRow, CategorySelect, PackagingAndDateFields, QuantityInput, TemperatureField } from './LineFields'
+import { changeLine } from './lines'
 import { SupplierCombobox } from './SupplierCombobox'
 import { matchSupplier } from './suppliers'
-
-const LINE_CATEGORIES: Array<{ value: DeliveryLineCategory; label: string }> = [
-  { value: 'chilled', label: 'Chilled' },
-  { value: 'frozen', label: 'Frozen' },
-  { value: 'produce', label: 'Produce' },
-  { value: 'bakery', label: 'Bakery' },
-  { value: 'ambient', label: 'Ambient' },
-  { value: 'non_food', label: 'Non-food' },
-]
-
-const UNITS = ['kg', 'g', 'litres', 'units', 'cases', 'trays', 'drums', 'rolls']
-
-const REJECTION_REASONS = [
-  'Temperature above the accepted limit on arrival',
-  'Signs of thawing or refreezing',
-  'Outer packaging damaged in transit',
-  'Packaging contaminated or leaking',
-  'Use-by date too short on arrival',
-  'Incorrect product or quantity supplied',
-  'Poor visual quality or odour',
-]
 
 function toLocalInputValue(date: Date): string {
   return format(date, "yyyy-MM-dd'T'HH:mm")
@@ -80,6 +63,7 @@ export function DeliveryFormModal({
 }) {
   const { data, activeStaffId, saveDelivery } = useStore()
   const toast = useToast()
+  const navigate = useNavigate()
 
   // Mounted only while open, so the form seeds itself once from `existing`
   // (edit), `repeatOf` (repeat) or sensible defaults (new) and needs no reset effect.
@@ -107,33 +91,25 @@ export function DeliveryFormModal({
   const status = useMemo(() => deriveDeliveryStatus(lines), [lines])
   const matchedSupplier = matchSupplier(data.suppliers, supplierName)
   const newSupplierName = matchedSupplier ? '' : supplierName.trim()
+  const waitingOrders = useMemo(() => {
+    const { due, overdue } = selectOrdersToCheckIn(data, new Date())
+    return [...due, ...overdue]
+  }, [data])
+  const supplierHasOrder = !existing && waitingOrders.some((order) => order.supplierId === matchedSupplier?.id)
   const rejectedCount = lines.filter((line) => !line.accepted).length
   const missingProduct = lines.some((line) => line.product.trim() === '')
+  const missingQuantity = lines.some((line) => Number.isNaN(line.quantity))
   const missingReason = lines.some((line) => !line.accepted && !line.rejectionReason)
-  const canSave = supplierName.trim() !== '' && checkedBy !== '' && lines.length > 0 && !missingProduct && !missingReason
+  const canSave =
+    supplierName.trim() !== '' &&
+    checkedBy !== '' &&
+    lines.length > 0 &&
+    !missingProduct &&
+    !missingQuantity &&
+    !missingReason
 
   function updateLine(id: string, changes: Partial<DeliveryLine>) {
-    setLines((current) =>
-      current.map((line) => {
-        if (line.id !== id) return line
-        const next = { ...line, ...changes }
-
-        // Switching category changes whether a temperature is meaningful.
-        if (changes.category) {
-          const needsTemp = deliveryTempLimit({ category: changes.category }, data.settings) !== null
-          next.temperature = needsTemp ? (line.temperature ?? 0) : null
-        }
-
-        // Anything the rules flag defaults to rejected, but staff can override.
-        const concern = deliveryLineConcern(next, data.settings)
-        if (concern && line.accepted && (changes.temperature !== undefined || changes.packaging !== undefined)) {
-          next.accepted = false
-          next.rejectionReason = next.rejectionReason ?? concern
-        }
-        if (changes.accepted === true) next.rejectionReason = undefined
-        return next
-      }),
-    )
+    setLines((current) => current.map((line) => (line.id === id ? changeLine(line, changes, data.settings) : line)))
   }
 
   function handleSave() {
@@ -148,6 +124,8 @@ export function DeliveryFormModal({
       active: true,
     }
     const delivery: Delivery = {
+      // Keeps what this form doesn't show, such as the order it was checked in against.
+      ...existing,
       id: existing?.id ?? createId('dv'),
       supplierId: supplier.id,
       receivedAt: new Date(receivedAt).toISOString(),
@@ -199,6 +177,26 @@ export function DeliveryFormModal({
       }
     >
       <div className="space-y-5">
+        {supplierHasOrder ? (
+          <div className="border-brand-500/35 bg-brand-50 dark:bg-brand-500/10 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border px-3.5 py-2.5">
+            <ClipboardList className="text-brand-700 dark:text-brand-300 size-4 shrink-0" />
+            <p className="text-ink min-w-0 flex-1 text-[13px]">
+              {matchedSupplier?.name} has an order waiting to be checked in. Check it in from the order instead, so
+              what came is matched against what was ordered.
+            </p>
+            <Button
+              size="sm"
+              variant="subtle"
+              onClick={() => {
+                onClose()
+                navigate('/deliveries')
+              }}
+            >
+              Go to the order
+            </Button>
+          </div>
+        ) : null}
+
         <div className="grid gap-4 sm:grid-cols-2">
           <Field
             label="Supplier"
@@ -351,9 +349,6 @@ function LineEditor({
   onChange: (changes: Partial<DeliveryLine>) => void
   onRemove?: () => void
 }) {
-  const needsTemperature = limit !== null
-  const isChilledish = line.category !== 'ambient' && line.category !== 'non_food'
-
   return (
     <div
       className={cn(
@@ -390,113 +385,25 @@ function LineEditor({
         </Field>
 
         <Field label="Category">
-          <Select
-            value={line.category}
-            onChange={(event) => onChange({ category: event.target.value as DeliveryLineCategory })}
-          >
-            {LINE_CATEGORIES.map((category) => (
-              <option key={category.value} value={category.value}>
-                {category.label}
-              </option>
-            ))}
-          </Select>
+          <CategorySelect value={line.category} onChange={(category) => onChange({ category })} />
         </Field>
 
         <Field label="Quantity">
-          <div className="flex gap-2">
-            <TextInput
-              type="number"
-              inputMode="decimal"
-              step="0.1"
-              min="0"
-              className="tabular"
-              value={line.quantity}
-              onChange={(event) => onChange({ quantity: Number(event.target.value) })}
-            />
-            <Select
-              value={line.unit}
-              className="w-28"
-              onChange={(event) => onChange({ unit: event.target.value })}
-            >
-              {UNITS.map((unit) => (
-                <option key={unit} value={unit}>
-                  {unit}
-                </option>
-              ))}
-            </Select>
-          </div>
+          <QuantityInput
+            quantity={line.quantity}
+            unit={line.unit}
+            invalid={showErrors && Number.isNaN(line.quantity)}
+            onChange={onChange}
+          />
         </Field>
 
-        {needsTemperature ? (
-          <Field label="Temperature" hint={`Limit ${limit}°C`}>
-            <TextInput
-              type="number"
-              inputMode="decimal"
-              step="0.1"
-              className="tabular"
-              value={line.temperature ?? ''}
-              onChange={(event) =>
-                onChange({ temperature: event.target.value === '' ? null : Number(event.target.value) })
-              }
-            />
-          </Field>
-        ) : null}
+        {limit !== null ? <TemperatureField line={line} limit={limit} onChange={onChange} /> : null}
 
-        <Field label="Packaging">
-          <Select
-            value={line.packaging}
-            onChange={(event) => onChange({ packaging: event.target.value as DeliveryLine['packaging'] })}
-          >
-            <option value="good">Good — intact and clean</option>
-            <option value="damaged">Damaged</option>
-            <option value="contaminated">Contaminated / leaking</option>
-          </Select>
-        </Field>
-
-        {isChilledish ? (
-          <Field label="Use by">
-            <TextInput
-              type="date"
-              value={line.useBy ?? ''}
-              onChange={(event) => onChange({ useBy: event.target.value || undefined })}
-            />
-          </Field>
-        ) : (
-          <Field label="Best before">
-            <TextInput
-              type="date"
-              value={line.bestBefore ?? ''}
-              onChange={(event) => onChange({ bestBefore: event.target.value || undefined })}
-            />
-          </Field>
-        )}
+        <PackagingAndDateFields line={line} onChange={onChange} />
       </div>
 
-      <div className="border-line mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-t pt-3">
-        <Checkbox
-          label="Accepted"
-          checked={line.accepted}
-          onChange={(event) => onChange({ accepted: event.target.checked })}
-        />
-        {!line.accepted ? (
-          <div className="min-w-0 flex-1">
-            <Select
-              value={line.rejectionReason ?? ''}
-              invalid={showErrors && !line.rejectionReason}
-              onChange={(event) => onChange({ rejectionReason: event.target.value || undefined })}
-            >
-              <option value="">Reason for rejection…</option>
-              {REJECTION_REASONS.map((reason) => (
-                <option key={reason} value={reason}>
-                  {reason}
-                </option>
-              ))}
-              {line.rejectionReason && !REJECTION_REASONS.includes(line.rejectionReason) ? (
-                <option value={line.rejectionReason}>{line.rejectionReason}</option>
-              ) : null}
-            </Select>
-          </div>
-        ) : null}
+      <div className="border-line mt-3 border-t pt-3">
+        <AcceptanceRow line={line} showErrors={showErrors} onChange={onChange} />
       </div>
     </div>
   )

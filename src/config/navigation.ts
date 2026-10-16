@@ -16,10 +16,11 @@ import {
   Soup,
   Thermometer,
   TrendingUp,
+  Truck,
 } from 'lucide-react'
 
 /** Which live counter, if any, is shown against a nav item. */
-export type NavBadge = 'today' | 'openIssues' | 'openTasks' | 'rejectedDeliveries'
+export type NavBadge = 'today' | 'openIssues' | 'openTasks' | 'ordersToCheckIn'
 
 export interface NavItem {
   label: string
@@ -44,7 +45,8 @@ export const PRIMARY_NAV: NavItem[] = [
 export const RECORD_NAV: NavItem[] = [
   { label: 'Temperatures', to: '/temperatures', icon: Thermometer },
   { label: 'Checklists', to: '/checklists', icon: ClipboardCheck },
-  { label: 'Deliveries', to: '/deliveries', icon: Package, badge: 'rejectedDeliveries' },
+  { label: 'Deliveries', to: '/deliveries', icon: Package, badge: 'ordersToCheckIn' },
+  { label: 'Suppliers', to: '/suppliers', icon: Truck },
   { label: 'Issues', to: '/food-safety', icon: ShieldAlert, badge: 'openIssues' },
   { label: 'Stock', to: '/stock', icon: ClipboardList },
 ]
