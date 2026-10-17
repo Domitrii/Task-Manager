@@ -133,7 +133,7 @@ export function OrderDetailModal({
             {delivery ? 'Ordered and received' : 'Items'}
             <span className="text-ink-muted ml-1.5 font-normal">({order.lines.length})</span>
           </h3>
-          <ul className="space-y-2">
+          <ul className="space-y-2" aria-label="Ordered items">
             {order.lines.map((line) => (
               <OrderLineRow key={line.id} line={line} delivery={delivery} />
             ))}
@@ -146,7 +146,7 @@ export function OrderDetailModal({
               Extras
               <span className="text-ink-muted ml-1.5 font-normal">brought on the day, not on the order</span>
             </h3>
-            <ul className="space-y-2">
+            <ul className="space-y-2" aria-label="Extras">
               {extras.map((line) => (
                 <ExtraRow key={line.id} line={line} />
               ))}

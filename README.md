@@ -187,6 +187,22 @@ Everything that adds a record goes through one API, `useQuickEntry()`
 right on desktop) opens a sheet over it. Entering a temperature offers **Save and next**
 whenever another scheduled check is waiting, so a round of fridges is one sheet, not ten.
 
+### The day's progress bar
+
+A bar under the top bar on every page shows today's whole list (`selectDayProgress`):
+- the scheduled temperature checks and checklists, later ones included
+- tasks due today or overdue
+- orders waiting to be checked in
+
+What's done is coloured by whoever entered it, one block per person, biggest share first. Tapping
+the bar opens who did what and what's left, with missed and overdue items called out. Extra records
+nobody had to make, like an ad-hoc probe reading, aren't on the list.
+
+Each person's colour (`data/staffColors.ts`) is the same on their avatar and in the bar. Colours are
+handed out per team, so up to eight people never share one. Someone new keeps the colour they're
+given (`StaffMember.color`), so nobody else's colour moves when they join. Tasks now record who
+ticked them off (`Task.completedBy`).
+
 ### QR labels and scanning
 
 **Temperatures → QR labels** (also linked from Settings → Equipment) prints a 60 × 66 mm label

@@ -21,6 +21,7 @@ import { deriveDeliveryStatus, evaluateTemperature, periodForTime } from '@/lib/
 import { createId, initialsOf } from '@/lib/utils'
 import { applyChanges, EMPTY_DATA, type RecordChange } from './records'
 import type { DataRepository } from './repository'
+import { colorForNewcomer, staffColors } from './staffColors'
 import { staffRoleFromText } from './staffRoles'
 import type {
   AppData,
@@ -157,8 +158,15 @@ function reducer(state: AppData, action: Action): AppData {
       return { ...state, items: upsert(state.items, action.item) }
     case 'item/delete':
       return { ...state, items: state.items.filter((item) => item.id !== action.id) }
-    case 'staff/save':
-      return { ...state, staff: upsert(state.staff, action.member) }
+    case 'staff/save': {
+      // Someone new keeps the colour they're given, so nobody else's moves when they join.
+      const isNew = !state.staff.some((member) => member.id === action.member.id)
+      const member =
+        isNew && action.member.color === undefined
+          ? { ...action.member, color: colorForNewcomer(state.staff, action.member.id) }
+          : action.member
+      return { ...state, staff: upsert(state.staff, member) }
+    }
     case 'supplier/save':
       return { ...state, suppliers: upsert(state.suppliers, action.supplier) }
     case 'settings/update':
@@ -212,6 +220,8 @@ interface StoreValue {
   /** Device-only use: who's holding the device. A synced team ignores it. */
   setActiveStaffId: (id: ID) => void
   activeStaff: StaffMember
+  /** Everyone's colour on avatars and the day's progress bar; see `staffColors.ts`. */
+  staffColors: Map<ID, number>
   recordTemperature: (input: RecordTemperatureInput) => TemperatureLog
   /** Changes a saved reading, keeping what it said before. Who may is up to the screens (and the server). */
   editTemperature: (id: ID, changes: EditTemperatureInput) => void
@@ -378,6 +388,8 @@ export function StoreProvider({
   // Its own function, so showing a photo doesn't fetch it again every time the data changes.
   const photoUrl = useCallback((path: string) => repository.photoUrl(path), [repository])
 
+  const colors = useMemo(() => staffColors(data.staff), [data.staff])
+
   const value = useMemo<StoreValue>(() => {
     const activeStaff: StaffMember = userId
       ? (data.staff.find((member) => member.userId === userId) ?? {
@@ -440,6 +452,7 @@ export function StoreProvider({
       activeStaffId: activeStaff.id,
       setActiveStaffId,
       activeStaff,
+      staffColors: colors,
 
       recordTemperature(input) {
         const item = data.items.find((entry) => entry.id === input.itemId)
@@ -615,7 +628,19 @@ export function StoreProvider({
       },
 
       updateTask(id, changes) {
-        dispatch({ type: 'task/update', id, changes })
+        const task = data.tasks.find((entry) => entry.id === id)
+        // Who ticked it off, so the day's progress can say; reopening it forgets.
+        const finishing = changes.status === 'done' && task?.status !== 'done'
+        const reopening = changes.status !== undefined && changes.status !== 'done'
+        dispatch({
+          type: 'task/update',
+          id,
+          changes: finishing
+            ? { completedBy: activeStaff.id, ...changes }
+            : reopening
+              ? { ...changes, completedBy: undefined }
+              : changes,
+        })
       },
 
       deleteTask(id) {
@@ -679,7 +704,7 @@ export function StoreProvider({
         applyData(userId ? keepAccounts(next, data.staff, { userId, name: personName }) : next)
       },
     }
-  }, [data, ready, hasData, activeStaffId, setActiveStaffId, repository, applyData, userId, personName, photoUrl])
+  }, [data, ready, hasData, activeStaffId, setActiveStaffId, repository, applyData, userId, personName, photoUrl, colors])
 
   return <StoreContext value={value}>{children}</StoreContext>
 }

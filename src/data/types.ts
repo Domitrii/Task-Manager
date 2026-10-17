@@ -32,6 +32,12 @@ export interface StaffMember {
   pin?: string
   /** The account this person signs in with, when the team syncs. Absent for people without one. */
   userId?: string
+  /**
+   * Their colour on avatars and the day's progress bar, as an index into the
+   * palette. Given when they're added and kept, so it never moves; people from
+   * before have one worked out (see `data/staffColors.ts`).
+   */
+  color?: number
 }
 
 /* -------------------------------------------------------------------------- */
@@ -341,6 +347,8 @@ export interface Task {
   category: TaskCategory
   createdAt: ISODateTime
   completedAt?: ISODateTime
+  /** Who ticked it off. Absent on tasks done before this was kept. */
+  completedBy?: ID
   /** What whoever does the task has to answer. Copied from a template, so editing either never changes the other. */
   questions?: TaskQuestion[]
   /** Keyed by question id. Answers to questions since removed are kept but ignored. */

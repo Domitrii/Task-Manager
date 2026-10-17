@@ -567,3 +567,101 @@ export function selectComplianceTrend(
   }
   return results
 }
+
+/* -------------------------------------------------------------------------- */
+/* The day's progress — everything to do today, and who did it                 */
+/* -------------------------------------------------------------------------- */
+
+export type DayWorkKind = 'check' | 'checklist' | 'task' | 'delivery'
+
+export const DAY_WORK_KINDS: DayWorkKind[] = ['check', 'checklist', 'task', 'delivery']
+
+export interface DayContributor {
+  /** Undefined when the record doesn't say who did it. */
+  staffId?: ID
+  count: number
+  byKind: Record<DayWorkKind, number>
+}
+
+export interface DayProgress {
+  total: number
+  done: number
+  /** Everyone who did something on today's list, most first. */
+  contributors: DayContributor[]
+  /** What's still to do, and how much of that is already late. */
+  left: Record<DayWorkKind, { count: number; late: number }>
+}
+
+const noKinds = (): Record<DayWorkKind, number> => ({ check: 0, checklist: 0, task: 0, delivery: 0 })
+
+/**
+ * Everything the team has to do today, as one list: the scheduled temperature
+ * checks and checklists (those later today too), tasks due today or overdue,
+ * and orders waiting to be checked in. Each done item is credited to whoever
+ * entered it. Extra records nobody had to make, like an ad-hoc probe reading,
+ * aren't on the list.
+ */
+export function selectDayProgress(data: AppData, now: Date): DayProgress {
+  const work: Array<{ kind: DayWorkKind; done: boolean; doneBy?: ID; late: boolean }> = []
+
+  for (const task of selectToday(data, now).periods.flatMap((period) => period.tasks)) {
+    if (task.kind === 'temperature') {
+      const done = task.state === 'done' || task.state === 'failed' || task.state === 'late'
+      const log = task.state === 'late' ? task.followUp : task.slot.log
+      work.push({ kind: 'check', done, doneBy: done ? (log?.enteredBy ?? log?.recordedBy) : undefined, late: task.state === 'missed' })
+    } else {
+      const run = task.checklist.run
+      work.push({ kind: 'checklist', done: Boolean(run), doneBy: run?.completedBy, late: task.state === 'missed' })
+    }
+  }
+
+  const endOfToday = new Date(startOfDayLocal(now).getTime() + 86_399_999)
+  for (const task of data.tasks) {
+    if (!task.dueAt || parseISO(task.dueAt) > endOfToday) continue
+    if (task.status !== 'done') {
+      work.push({ kind: 'task', done: false, late: parseISO(task.dueAt) < now })
+    } else if (task.completedAt && isSameLocalDay(task.completedAt, now)) {
+      work.push({ kind: 'task', done: true, doneBy: task.completedBy, late: false })
+    }
+  }
+
+  for (const order of data.supplierOrders) {
+    const state = orderState(order, now)
+    if (state === 'due' || state === 'overdue') {
+      work.push({ kind: 'delivery', done: false, late: state === 'overdue' })
+    } else if (state === 'received' && order.receivedAt && isSameLocalDay(order.receivedAt, now)) {
+      work.push({ kind: 'delivery', done: true, doneBy: order.receivedBy, late: false })
+    }
+  }
+
+  const people = new Map<ID | undefined, DayContributor>()
+  const left: DayProgress['left'] = {
+    check: { count: 0, late: 0 },
+    checklist: { count: 0, late: 0 },
+    task: { count: 0, late: 0 },
+    delivery: { count: 0, late: 0 },
+  }
+  for (const item of work) {
+    if (!item.done) {
+      left[item.kind].count += 1
+      if (item.late) left[item.kind].late += 1
+      continue
+    }
+    // Someone no longer on the staff list counts as not known.
+    const staffId = item.doneBy && data.staff.some((person) => person.id === item.doneBy) ? item.doneBy : undefined
+    const person = people.get(staffId) ?? { staffId, count: 0, byKind: noKinds() }
+    person.count += 1
+    person.byKind[item.kind] += 1
+    people.set(staffId, person)
+  }
+
+  const contributors = [...people.values()].sort(
+    (a, b) =>
+      // Not known goes last, whatever it adds up to.
+      Number(a.staffId === undefined) - Number(b.staffId === undefined) ||
+      b.count - a.count ||
+      staffName(data, a.staffId).localeCompare(staffName(data, b.staffId)),
+  )
+  const done = contributors.reduce((total, person) => total + person.count, 0)
+  return { total: work.length, done, contributors, left }
+}

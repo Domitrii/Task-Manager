@@ -136,6 +136,13 @@ const DIALOGS: Array<{ name: string; open: (page: Page) => Promise<void>; phones
     },
   },
   {
+    name: 'today’s progress',
+    open: async (page) => {
+      await visit(page, '/')
+      await page.getByRole('button', { name: /Show who did what/ }).click()
+    },
+  },
+  {
     name: 'log a reading',
     open: async (page) => {
       await visit(page, '/temperatures')

@@ -35,15 +35,17 @@ test.describe('supplier orders', () => {
     const historyBefore = (await history.textContent()) ?? ""
 
     await harrow.getByRole('button', { name: /^Delivered/ }).first().click()
-    await expect(page.getByRole('dialog').locator('li').first()).toBeVisible()
-    const before = await linesOf(page.getByRole('dialog'))
+    const ordered = page.getByRole('dialog').getByRole('list', { name: 'Ordered items' })
+    await expect(ordered.locator('li').first()).toBeVisible()
+    // Only what was ordered: extras the driver brought aren't repeated.
+    const before = await linesOf(ordered)
     expect(before.length).toBeGreaterThan(0)
     await page.getByRole('dialog').getByRole('button', { name: 'Repeat' }).click()
     await page.getByRole('dialog').getByRole('button', { name: 'Save draft' }).click()
 
     await expect(history).toHaveText(historyBefore)
     const draft = upcoming(page).locator('article').filter({ hasText: 'Harrow & Sons Butchers' }).filter({ hasText: 'Draft' })
-    await expect.poll(() => linesOf(draft)).toEqual(before)
+    await expect.poll(() => linesOf(draft.getByRole('list', { name: 'Items' }))).toEqual(before)
   })
 
   test('a new order shows on Suppliers with everything the manager put in it', async ({ page }) => {
@@ -109,7 +111,7 @@ test.describe('supplier orders', () => {
   test('staff see orders without changing them, and check one in under their own name', async ({ page }) => {
     await visit(page, '/')
     await page.getByRole('button', { name: /Switch person/ }).click()
-    await page.getByRole('button', { name: /Lena Ferreira/ }).click()
+    await page.getByRole('button', { name: /^LF Lena Ferreira/ }).click()
 
     await visit(page, '/suppliers')
     await expect(card(page, 'Harrow & Sons Butchers')).toBeVisible()
@@ -130,5 +132,24 @@ test.describe('supplier orders', () => {
 
     await page.locator('tbody tr').filter({ hasText: 'Northern Catch Seafood' }).first().click()
     await expect(page.getByRole('dialog')).toContainText('Lena Ferreira')
+  })
+
+  test('the day’s progress bar credits whoever ticks something off', async ({ page }) => {
+    await visit(page, '/tasks')
+    const bar = page.getByRole('button', { name: /Show who did what/ })
+    const label = async () => (await bar.getAttribute('aria-label')) ?? ''
+    const done = (text: string) => Number(text.match(/Today: (\d+) of/)?.[1])
+    const amara = (text: string) => Number(text.match(/Amara Okafor (\d+)/)?.[1] ?? 0)
+    const before = await label()
+
+    // Due today, and Amara is the one on the device.
+    await page
+      .locator('li')
+      .filter({ hasText: 'Label and date everything in the walk-in' })
+      .getByRole('button', { name: 'Mark complete' })
+      .click()
+
+    await expect.poll(async () => done(await label())).toBe(done(before) + 1)
+    expect(amara(await label())).toBe(amara(before) + 1)
   })
 })

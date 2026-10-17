@@ -78,7 +78,7 @@ test.describe('with the demo venue', () => {
     const errors = watchForErrors(page)
     await visit(page, '/')
     await page.getByRole('button', { name: /Switch person/ }).click()
-    await page.getByRole('button', { name: /Lena Ferreira/ }).click()
+    await page.getByRole('button', { name: /^LF Lena Ferreira/ }).click()
     await visit(page, '/suppliers')
     await expect(page.getByText(/can place orders/)).toBeVisible()
     await expect(page.getByRole('button', { name: 'New order' })).toHaveCount(0)

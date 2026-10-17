@@ -7,7 +7,7 @@
  * shows genuine "due" and "overdue" states rather than a perfect green board.
  */
 import { addDays, addMinutes, subDays, subHours } from 'date-fns'
-import { periodInterval, deriveDeliveryStatus, evaluateTemperature, toISODate } from '@/lib/compliance'
+import { periodInterval, deriveDeliveryStatus, evaluateTemperature, startOfDayLocal, toISODate } from '@/lib/compliance'
 import { createId } from '@/lib/utils'
 import { DELIVERY_LIMITS, SAFE_RANGES } from './temperatureRanges'
 import type {
@@ -705,7 +705,13 @@ function buildIssues(now: Date, logs: TemperatureLog[], deliveries: Delivery[]):
 }
 
 function buildTasks(now: Date): Task[] {
+  const dueToday = new Date(now)
+  dueToday.setHours(18, 0, 0, 0)
+  // An hour ago, but never before midnight, so it always counts as done today.
+  const doneToday = new Date(Math.max(startOfDayLocal(now).getTime(), now.getTime() - 3_600_000))
   const base: Array<Omit<Task, 'id' | 'createdAt'>> = [
+    { title: 'Label and date everything in the walk-in', assigneeId: 'st_marcus', dueAt: dueToday.toISOString(), priority: 'normal', status: 'todo', category: 'prep' },
+    { title: 'Descale the coffee machine', assigneeId: 'st_sofia', dueAt: dueToday.toISOString(), priority: 'low', status: 'done', category: 'maintenance', completedAt: doneToday.toISOString(), completedBy: 'st_sofia' },
     { title: 'Book annual extraction canopy deep clean', description: 'Certificate expires end of the month — needs a dated invoice for the EHO file.', assigneeId: 'st_amara', dueAt: addDays(now, 2).toISOString(), priority: 'high', status: 'todo', category: 'compliance' },
     { title: 'Re-calibrate all probe thermometers', description: 'Ice-water and boiling-point test, log results on the calibration sheet.', assigneeId: 'st_tom', dueAt: addDays(now, 1).toISOString(), priority: 'high', status: 'in_progress', category: 'compliance' },
     { title: 'Walk-in Fridge 2 — engineer visit', description: 'Intermittent temperature spikes overnight. Engineer booked for Thursday AM.', assigneeId: 'st_tom', dueAt: addDays(now, 3).toISOString(), priority: 'high', status: 'todo', category: 'maintenance' },
@@ -714,8 +720,8 @@ function buildTasks(now: Date): Task[] {
     { title: 'Monthly full stock count', assigneeId: 'st_priya', dueAt: addDays(now, 5).toISOString(), priority: 'normal', status: 'todo', category: 'admin' },
     { title: 'Replace door seal on Under-counter Freezer', assigneeId: 'st_marcus', dueAt: addDays(now, 4).toISOString(), priority: 'normal', status: 'todo', category: 'maintenance' },
     { title: 'Prep: 20L beef stock for weekend service', assigneeId: 'st_marcus', dueAt: addDays(now, 1).toISOString(), priority: 'normal', status: 'in_progress', category: 'prep' },
-    { title: 'Order replacement colour-coded boards', assigneeId: 'st_lena', dueAt: subDays(now, 2).toISOString(), priority: 'low', status: 'done', category: 'admin', completedAt: subDays(now, 2).toISOString() },
-    { title: 'File last month’s pest control report', assigneeId: 'st_amara', dueAt: subDays(now, 4).toISOString(), priority: 'normal', status: 'done', category: 'compliance', completedAt: subDays(now, 4).toISOString() },
+    { title: 'Order replacement colour-coded boards', assigneeId: 'st_lena', dueAt: subDays(now, 2).toISOString(), priority: 'low', status: 'done', category: 'admin', completedAt: subDays(now, 2).toISOString(), completedBy: 'st_lena' },
+    { title: 'File last month’s pest control report', assigneeId: 'st_amara', dueAt: subDays(now, 4).toISOString(), priority: 'normal', status: 'done', category: 'compliance', completedAt: subDays(now, 4).toISOString(), completedBy: 'st_amara' },
     { title: 'Deep clean ice machine', assigneeId: 'st_sofia', dueAt: addDays(now, 6).toISOString(), priority: 'normal', status: 'todo', category: 'maintenance' },
     { title: 'Review supplier temperature performance', description: 'Northern Catch and Greenfield both had rejections this fortnight.', assigneeId: 'st_amara', dueAt: addDays(now, 7).toISOString(), priority: 'low', status: 'todo', category: 'admin' },
   ]
