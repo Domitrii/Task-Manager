@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { Printer, QrCode } from 'lucide-react'
 import { CATEGORY_LABELS } from '@/config/navigation'
 import { useStore } from '@/data/store'
@@ -18,6 +19,8 @@ const isProbe = (item: MonitoredItem) => item.category === 'cooking' || item.cat
 
 export function QrLabelsPage() {
   const { data } = useStore()
+  const navigate = useNavigate()
+  const location = useLocation()
 
   const items = useMemo(
     () =>
@@ -47,10 +50,17 @@ export function QrLabelsPage() {
     })
   }
 
+  /** Reached from Temperatures and Settings, so go back to whichever it was; opened directly, there's nothing to go back to. */
+  function back() {
+    if (location.key === 'default') navigate('/temperatures')
+    else navigate(-1)
+  }
+
   return (
     <div className="space-y-5">
       <PageHeader
         title="QR labels"
+        onBack={back}
         description="Stick one on each unit. Staff scan it with their phone camera to log a reading without searching for the right fridge."
         actions={
           <Button

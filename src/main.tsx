@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import { App } from './App'
+import { ScrollToTop } from './components/layout/ScrollToTop'
 import { ToastProvider } from './components/ui/Toast'
 import { LocalStorageRepository, type DataRepository } from './data/repository'
 import { StoreProvider, type SignedInPerson } from './data/store'
@@ -21,6 +22,7 @@ function renderApp(repository: DataRepository, person?: SignedInPerson) {
   return (
     <StoreProvider repository={repository} person={person}>
       <BrowserRouter>
+        <ScrollToTop />
         <App />
       </BrowserRouter>
     </StoreProvider>

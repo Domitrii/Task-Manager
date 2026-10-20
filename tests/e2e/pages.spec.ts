@@ -101,4 +101,20 @@ test.describe('with the demo venue', () => {
     await expectToFitScreen(page)
     expect(errors).toEqual([])
   })
+
+  test('each page opens at its top, going forward or back', async ({ page }) => {
+    await visit(page, '/temperatures')
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0)
+
+    // A real click would scroll the link into view first, which is the very thing under test.
+    await page.getByRole('link', { name: 'QR labels' }).dispatchEvent('click')
+    await expect(page.getByRole('heading', { name: 'QR labels', level: 1 })).toBeVisible()
+    expect(await page.evaluate(() => window.scrollY)).toBe(0)
+
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
+    await page.getByRole('button', { name: 'Back' }).dispatchEvent('click')
+    await expect(page).toHaveURL(`${DEVICE_URL}/temperatures`)
+    expect(await page.evaluate(() => window.scrollY)).toBe(0)
+  })
 })
