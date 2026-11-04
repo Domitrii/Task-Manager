@@ -1,19 +1,18 @@
 import { Link } from 'react-router-dom'
+import { Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-export function LogoMark({ className }: { className?: string }) {
+/** The tick in its tile. `inverse` is for sitting on the top band. */
+export function LogoMark({ className, inverse = false }: { className?: string; inverse?: boolean }) {
   return (
-    <span className={cn('bg-brand-600 flex size-8 shrink-0 items-center justify-center rounded-lg', className)}>
-      <svg viewBox="0 0 24 24" className="size-5" fill="none" aria-hidden>
-        <path
-          d="M7 3v8a2 2 0 0 0 2 2v8a1.2 1.2 0 0 0 2.4 0v-8a2 2 0 0 0 2-2V3"
-          stroke="#d5eff2"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-        />
-        <path d="M10.2 3v5" stroke="#d5eff2" strokeWidth="1.8" strokeLinecap="round" />
-        <path d="M17.4 3c1.5 1.2 1.8 4.3 0 5.8V21" stroke="#7bcad6" strokeWidth="1.8" strokeLinecap="round" />
-      </svg>
+    <span
+      className={cn(
+        'flex size-8 shrink-0 items-center justify-center rounded-lg',
+        inverse ? 'text-brand-700 bg-white' : 'bg-brand-700 text-white',
+        className,
+      )}
+    >
+      <Check className="size-[70%]" strokeWidth={3} aria-hidden />
     </span>
   )
 }
@@ -24,7 +23,7 @@ export function Logo({ venue }: { venue?: string }) {
     <Link to="/" className="flex min-w-0 items-center gap-2.5">
       <LogoMark />
       <span className="flex min-w-0 flex-col leading-tight">
-        <span className="text-ink text-[15px] font-bold tracking-tight">Mise</span>
+        <span className="font-display text-ink text-lg">Mise</span>
         {venue ? <span className="text-ink-muted truncate text-xs">{venue}</span> : null}
       </span>
     </Link>

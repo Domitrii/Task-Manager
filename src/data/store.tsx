@@ -23,6 +23,7 @@ import { applyChanges, EMPTY_DATA, type RecordChange } from './records'
 import type { DataRepository } from './repository'
 import { colorForNewcomer, staffColors } from './staffColors'
 import { staffRoleFromText } from './staffRoles'
+import { nextOccurrence } from './tasks'
 import type {
   AppData,
   ChecklistRun,
@@ -30,17 +31,21 @@ import type {
   Delivery,
   FoodSafetyIssue,
   ID,
+  Invitation,
   ISODate,
   MonitoredItem,
+  Shift,
   StaffMember,
   StockItem,
   Supplier,
   SupplierOrder,
   SupplierOrderLine,
   Task,
+  TaskSection,
   TaskTemplate,
   TemperatureLog,
   TemperatureLogFields,
+  Unavailability,
   VenueSettings,
 } from './types'
 
@@ -62,6 +67,16 @@ type Action =
   | { type: 'task/addMany'; tasks: Task[] }
   | { type: 'task/update'; id: ID; changes: Partial<Task> }
   | { type: 'task/delete'; id: ID }
+  | { type: 'task/reorder'; positions: Map<ID, number> }
+  | { type: 'section/save'; section: TaskSection }
+  | { type: 'section/delete'; id: ID }
+  | { type: 'section/reorder'; order: ID[] }
+  | { type: 'shift/save'; shift: Shift }
+  | { type: 'shift/delete'; id: ID }
+  | { type: 'unavailability/save'; entry: Unavailability }
+  | { type: 'unavailability/delete'; id: ID }
+  | { type: 'invitation/save'; invitation: Invitation }
+  | { type: 'invitation/delete'; id: ID }
   | { type: 'template/save'; template: TaskTemplate }
   | { type: 'template/addMany'; templates: TaskTemplate[] }
   | { type: 'template/delete'; id: ID }
@@ -142,6 +157,42 @@ function reducer(state: AppData, action: Action): AppData {
       return { ...state, tasks: patch(state.tasks, action.id, action.changes) }
     case 'task/delete':
       return { ...state, tasks: state.tasks.filter((task) => task.id !== action.id) }
+    case 'task/reorder':
+      return {
+        ...state,
+        tasks: state.tasks.map((task) => {
+          const position = action.positions.get(task.id)
+          return position === undefined || position === task.position ? task : { ...task, position }
+        }),
+      }
+    case 'section/save':
+      return { ...state, taskSections: upsert(state.taskSections, action.section) }
+    case 'section/delete':
+      return {
+        ...state,
+        taskSections: state.taskSections.filter((section) => section.id !== action.id),
+        tasks: state.tasks.filter((task) => task.sectionId !== action.id),
+      }
+    case 'section/reorder':
+      return {
+        ...state,
+        taskSections: state.taskSections.map((section) => {
+          const position = action.order.indexOf(section.id)
+          return position === -1 || position === section.position ? section : { ...section, position }
+        }),
+      }
+    case 'shift/save':
+      return { ...state, shifts: upsert(state.shifts, action.shift) }
+    case 'shift/delete':
+      return { ...state, shifts: state.shifts.filter((shift) => shift.id !== action.id) }
+    case 'unavailability/save':
+      return { ...state, unavailability: upsert(state.unavailability, action.entry) }
+    case 'unavailability/delete':
+      return { ...state, unavailability: state.unavailability.filter((entry) => entry.id !== action.id) }
+    case 'invitation/save':
+      return { ...state, invitations: upsert(state.invitations, action.invitation) }
+    case 'invitation/delete':
+      return { ...state, invitations: state.invitations.filter((entry) => entry.id !== action.id) }
     case 'template/save':
       return { ...state, taskTemplates: upsert(state.taskTemplates, action.template) }
     case 'template/addMany':
@@ -243,9 +294,27 @@ interface StoreValue {
   saveChecklistTemplate: (template: ChecklistTemplate) => void
   addIssue: (issue: Omit<FoodSafetyIssue, 'id'>) => FoodSafetyIssue
   updateIssue: (id: ID, changes: Partial<FoodSafetyIssue>) => void
+  /** Changes what a resolved issue says was done, keeping what it said, and asks for sign-off again. */
+  editIssueResolution: (id: ID, resolution: string) => void
   addTask: (task: Omit<Task, 'id' | 'createdAt'>) => void
   updateTask: (id: ID, changes: Partial<Task>) => void
   deleteTask: (id: ID) => void
+  /** Keeps the photo a task asks for, and returns where it's kept, to save on the task. */
+  addTaskPhoto: (id: ID, photo: Blob) => string
+  /** Places tasks in a section, by id. */
+  reorderTasks: (positions: Map<ID, number>) => void
+  saveTaskSection: (section: TaskSection) => void
+  /** Removes a section and every task in it. */
+  deleteTaskSection: (id: ID) => void
+  reorderTaskSections: (order: ID[]) => void
+  saveShift: (shift: Shift) => void
+  deleteShift: (id: ID) => void
+  clockIn: (id: ID) => void
+  clockOut: (id: ID) => void
+  saveUnavailability: (entry: Omit<Unavailability, 'id' | 'createdAt'>) => void
+  deleteUnavailability: (id: ID) => void
+  saveInvitation: (invitation: Pick<Invitation, 'email' | 'role'>) => void
+  deleteInvitation: (id: ID) => void
   /** Adds several tasks at once, e.g. a template's tasks to someone's list. */
   addTasks: (tasks: Omit<Task, 'id' | 'createdAt'>[]) => void
   saveTaskTemplate: (template: TaskTemplate) => void
@@ -274,6 +343,7 @@ export interface SignedInPerson {
   name: string
   /** The role they asked to join with, for their first staff record. Absent for whoever created the team. */
   jobRole?: string
+  email?: string
 }
 
 /** The same on every device, so two of someone's devices never add them twice. */
@@ -350,6 +420,7 @@ export function StoreProvider({
   const userId = person?.userId
   const personName = person?.name.trim() ?? ''
   const jobRole = person?.jobRole
+  const email = person?.email
   const lastName = useRef(personName)
   useEffect(() => {
     if (!userId || !hasData || !personName) return
@@ -360,6 +431,8 @@ export function StoreProvider({
       // A name changed on their profile carries over to the team's list.
       if (renamed && linked.name !== personName) {
         dispatch({ type: 'staff/save', member: { ...linked, name: personName, initials: initialsOf(personName) } })
+      } else if (email && linked.email !== email) {
+        dispatch({ type: 'staff/save', member: { ...linked, email } })
       }
       return
     }
@@ -368,17 +441,18 @@ export function StoreProvider({
     dispatch({
       type: 'staff/save',
       member: unclaimed
-        ? { ...unclaimed, userId, active: true }
+        ? { ...unclaimed, userId, email, active: true }
         : {
             id: staffIdFor(userId),
             userId,
+            email,
             name: personName,
             ...staffRoleFromText(jobRole),
             initials: initialsOf(personName),
             active: true,
           },
     })
-  }, [userId, personName, jobRole, hasData, data.staff])
+  }, [userId, personName, jobRole, email, hasData, data.staff])
 
   const setActiveStaffId = useCallback((id: ID) => {
     setActiveStaffIdState(id)
@@ -623,6 +697,24 @@ export function StoreProvider({
         dispatch({ type: 'issue/update', id, changes })
       },
 
+      editIssueResolution(id, resolution) {
+        const issue = data.issues.find((entry) => entry.id === id)
+        if (!issue) return
+        const edit = { at: new Date().toISOString(), by: activeStaff.id, before: issue.resolution ?? '' }
+        dispatch({
+          type: 'issue/update',
+          id,
+          changes: {
+            resolution,
+            resolutionEdits: [...(issue.resolutionEdits ?? []), edit],
+            // A sign-off only covers the words the manager read.
+            needsSignOff: true,
+            signedOffBy: undefined,
+            signedOffAt: undefined,
+          },
+        })
+      },
+
       addTask(task) {
         dispatch({ type: 'task/add', task: { ...task, id: createId('tk'), createdAt: new Date().toISOString() } })
       },
@@ -632,6 +724,10 @@ export function StoreProvider({
         // Who ticked it off, so the day's progress can say; reopening it forgets.
         const finishing = changes.status === 'done' && task?.status !== 'done'
         const reopening = changes.status !== undefined && changes.status !== 'done'
+        if (finishing && task) {
+          const next = nextOccurrence(task, data.tasks)
+          if (next) dispatch({ type: 'task/add', task: { ...next, id: createId('tk'), createdAt: new Date().toISOString() } })
+        }
         dispatch({
           type: 'task/update',
           id,
@@ -645,6 +741,71 @@ export function StoreProvider({
 
       deleteTask(id) {
         dispatch({ type: 'task/delete', id })
+      },
+
+      addTaskPhoto(id, photo) {
+        return repository.addPhoto(id, photo)
+      },
+
+      reorderTasks(positions) {
+        dispatch({ type: 'task/reorder', positions })
+      },
+
+      saveTaskSection(section) {
+        dispatch({ type: 'section/save', section })
+      },
+
+      deleteTaskSection(id) {
+        dispatch({ type: 'section/delete', id })
+      },
+
+      reorderTaskSections(order) {
+        dispatch({ type: 'section/reorder', order })
+      },
+
+      saveShift(shift) {
+        dispatch({ type: 'shift/save', shift })
+      },
+
+      deleteShift(id) {
+        dispatch({ type: 'shift/delete', id })
+      },
+
+      clockIn(id) {
+        const shift = data.shifts.find((entry) => entry.id === id)
+        if (shift) dispatch({ type: 'shift/save', shift: { ...shift, clockedInAt: new Date().toISOString() } })
+      },
+
+      clockOut(id) {
+        const shift = data.shifts.find((entry) => entry.id === id)
+        if (shift) dispatch({ type: 'shift/save', shift: { ...shift, clockedOutAt: new Date().toISOString() } })
+      },
+
+      saveUnavailability(entry) {
+        dispatch({
+          type: 'unavailability/save',
+          entry: { ...entry, id: createId('un'), createdAt: new Date().toISOString() },
+        })
+      },
+
+      deleteUnavailability(id) {
+        dispatch({ type: 'unavailability/delete', id })
+      },
+
+      saveInvitation(invitation) {
+        dispatch({
+          type: 'invitation/save',
+          invitation: {
+            ...invitation,
+            id: createId('in'),
+            createdAt: new Date().toISOString(),
+            createdBy: activeStaff.id,
+          },
+        })
+      },
+
+      deleteInvitation(id) {
+        dispatch({ type: 'invitation/delete', id })
       },
 
       addTasks(tasks) {

@@ -62,7 +62,7 @@ export function LogSheet({ api, onClose }: { api: QuickEntryApi; onClose: () => 
       run: () => api.recordTemperature({ restrictTo: ['cooking', 'cooling'] }),
     },
     {
-      label: 'Checklist',
+      label: 'Sign-off checklist',
       description: 'Opening, closing or cleaning',
       icon: ClipboardCheck,
       run: () => setStep('checklist'),
@@ -122,7 +122,7 @@ export function LogSheet({ api, onClose }: { api: QuickEntryApi; onClose: () => 
           </span>
           <span className="min-w-0 flex-1">
             <span className="block text-[15px] font-semibold">Start temperature checks</span>
-            <span className="text-brand-100 block text-[13px]">
+            <span className="block text-[13px] text-white/85">
               {dueReadings.length} {dueReadings.length === 1 ? 'check needs' : 'checks need'} doing now. We'll take
               you through them one by one.
             </span>
@@ -141,7 +141,7 @@ export function LogSheet({ api, onClose }: { api: QuickEntryApi; onClose: () => 
               onClick={choice.run}
               className="border-line bg-surface hover:border-brand-400 hover:bg-brand-50/50 dark:hover:bg-brand-500/8 flex min-h-32 flex-col items-start gap-3 rounded-xl border p-4 text-left transition-colors"
             >
-              <span className="bg-brand-50 text-brand-700 dark:bg-brand-500/12 dark:text-brand-300 flex size-10 items-center justify-center rounded-lg">
+              <span className="bg-brand-100 text-brand-700 dark:bg-brand-500/12 dark:text-brand-300 flex size-10 items-center justify-center rounded-lg">
                 <Icon className="size-5" />
               </span>
               <span>

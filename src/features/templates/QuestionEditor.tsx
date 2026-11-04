@@ -316,7 +316,7 @@ function SourceNotice({ source, onUnlink }: { source: QuestionSource; onUnlink: 
         <p className="text-ink text-[13px] font-medium">Filled from your team’s data</p>
         <p className="text-ink-muted text-[13px]">
           {describeSource(source, data)} Each new task uses what’s in{' '}
-          <Link to={`/settings?tab=${settings.tab}`} className="text-brand-700 dark:text-brand-300 font-semibold hover:underline">
+          <Link to={`/settings/manage?tab=${settings.tab}`} className="text-brand-700 dark:text-brand-300 font-semibold hover:underline">
             {settings.label}
           </Link>{' '}
           at the time.

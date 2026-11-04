@@ -164,7 +164,7 @@ function NewCodeModal({
       size="sm"
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>
+          <Button onClick={onClose}>
             Cancel
           </Button>
           <Button variant="primary" disabled={busy} onClick={() => void confirm()}>
@@ -208,7 +208,7 @@ function LeaveTeamModal({ sync, onClose }: { sync: SyncApi; onClose: () => void 
       size="sm"
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>
+          <Button onClick={onClose}>
             Cancel
           </Button>
           <Button variant="danger" disabled={busy || pending > 0} onClick={() => void confirm()}>

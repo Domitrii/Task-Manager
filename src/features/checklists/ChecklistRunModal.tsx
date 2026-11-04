@@ -116,7 +116,7 @@ export function ChecklistRunModal({
           </Button>
         ) : (
           <>
-            <Button variant="ghost" onClick={onClose}>
+            <Button onClick={onClose}>
               Cancel
             </Button>
             <Button variant="primary" onClick={handleSave} disabled={!canSave}>

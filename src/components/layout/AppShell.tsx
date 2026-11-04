@@ -6,12 +6,14 @@ import type { ID } from '@/data/types'
 import { toISODate } from '@/lib/compliance'
 import { useNow } from '@/lib/useNow'
 import { ChecklistRunModal } from '@/features/checklists/ChecklistRunModal'
-import { RaiseIssueModal } from '@/features/checklists/FoodSafetyPage'
+import { useAlerts } from '@/features/notifications/useAlerts'
+import { RaiseIssueModal } from '@/features/issues/IssueModals'
 import { DeliveryFormModal } from '@/features/deliveries/DeliveryFormModal'
 import { NewTaskModal } from '@/features/tasks/NewTaskModal'
 import { RecordTemperatureModal } from '@/features/temperatures/RecordTemperatureModal'
-import { BottomNav, MoreSheet } from './BottomNav'
+import { BottomNav } from './BottomNav'
 import { CommandPalette } from './CommandPalette'
+import { HeaderProgressContext, type HeaderProgress } from './headerProgress'
 import { LogSheet } from './LogSheet'
 import { QuickEntryContext, type QuickEntryApi, type TemperatureEntryOptions } from './quickEntry'
 import { Sidebar, type NavCounters } from './Sidebar'
@@ -20,7 +22,6 @@ import { Topbar } from './Topbar'
 /** Only one sheet is ever open, so choosing from one simply replaces it. */
 type Sheet =
   | { type: 'log' }
-  | { type: 'more' }
   | { type: 'search' }
   | { type: 'temperature'; options: TemperatureEntryOptions }
   | { type: 'delivery' }
@@ -31,7 +32,9 @@ type Sheet =
 export function AppShell() {
   const now = useNow()
   const { data } = useStore()
+  const { unread } = useAlerts()
   const [sheet, setSheet] = useState<Sheet | null>(null)
+  const [ownProgress, setOwnProgress] = useState<HeaderProgress | null>(null)
   const close = useCallback(() => setSheet(null), [])
 
   useEffect(() => {
@@ -74,6 +77,7 @@ export function AppShell() {
 
   return (
     <QuickEntryContext value={api}>
+      <HeaderProgressContext value={setOwnProgress}>
       <div className="flex min-h-full">
         <aside className="hidden w-60 shrink-0 lg:block">
           <div className="fixed inset-y-0 left-0 w-60">
@@ -82,8 +86,13 @@ export function AppShell() {
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <Topbar onOpenSearch={() => setSheet({ type: 'search' })} onOpenLog={api.openLog} />
-          <main className="min-w-0 flex-1 px-4 pt-2 pb-[calc(6.5rem+env(safe-area-inset-bottom))] sm:px-6 lg:px-8 lg:pt-4 lg:pb-12">
+          <Topbar
+            ownProgress={ownProgress}
+            alertCount={unread.length}
+            onOpenSearch={() => setSheet({ type: 'search' })}
+            onOpenLog={api.openLog}
+          />
+          <main className="min-w-0 flex-1 px-4 pt-5 pb-[calc(6.5rem+env(safe-area-inset-bottom))] sm:px-6 lg:px-8 lg:pb-12">
             <div className="mx-auto max-w-[1400px]">
               <Outlet />
             </div>
@@ -91,10 +100,9 @@ export function AppShell() {
         </div>
       </div>
 
-      <BottomNav counters={counters} onOpenLog={api.openLog} onOpenMore={() => setSheet({ type: 'more' })} />
+      <BottomNav onOpenLog={api.openLog} />
 
       {sheet?.type === 'log' ? <LogSheet api={api} onClose={close} /> : null}
-      {sheet?.type === 'more' ? <MoreSheet counters={counters} onClose={close} /> : null}
       {sheet?.type === 'search' ? <CommandPalette api={api} onClose={close} /> : null}
       {sheet?.type === 'temperature' ? (
         <RecordTemperatureModal
@@ -108,6 +116,7 @@ export function AppShell() {
       {sheet?.type === 'checklist' ? <ChecklistSheet templateId={sheet.templateId} onClose={close} /> : null}
       {sheet?.type === 'issue' ? <RaiseIssueModal open onClose={close} /> : null}
       {sheet?.type === 'task' ? <NewTaskModal onClose={close} /> : null}
+      </HeaderProgressContext>
     </QuickEntryContext>
   )
 }

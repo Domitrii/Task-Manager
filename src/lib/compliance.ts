@@ -29,7 +29,8 @@ export const CHECK_PERIOD_ORDER: CheckPeriod[] = ['opening', 'midday', 'evening'
 /** Judges a reading against the item's own range. A missing bound never fails. */
 export function evaluateTemperature(item: MonitoredItem, temperature: number): CheckOutcome {
   if (item.minTemp !== null && temperature < item.minTemp) return 'fail'
-  if (item.maxTemp !== null && temperature > item.maxTemp) return 'fail'
+  const ceiling = item.failAbove ?? item.maxTemp
+  if (ceiling !== null && temperature > ceiling) return 'fail'
   return 'pass'
 }
 

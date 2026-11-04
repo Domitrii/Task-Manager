@@ -277,8 +277,8 @@ function TeamSession({
 
   // Status changes every sync; the app itself only needs rendering once.
   const app = useMemo(
-    () => children(repository, { userId, name, jobRole }),
-    [children, repository, userId, name, jobRole],
+    () => children(repository, { userId, name, jobRole, email }),
+    [children, repository, userId, name, jobRole, email],
   )
 
   return <SyncContext value={api}>{app}</SyncContext>

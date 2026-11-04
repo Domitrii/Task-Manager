@@ -83,7 +83,7 @@ export function PhotoProofField({
         <div className="flex items-center gap-3">
           <img
             src={preview.url}
-            alt="Photo of the reading"
+            alt="Your photo"
             className={cn('border-line rounded-lg border object-cover', size === 'lg' ? 'size-24' : 'size-20')}
           />
           <div className="min-w-0">
@@ -180,8 +180,8 @@ export function StoredPhoto({ path, size = 'sm' }: { path: string; size?: 'sm' |
         <img src={url} alt="" className="size-full object-cover" />
       </button>
       {open ? (
-        <Modal open onClose={() => setOpen(false)} title="Photo of the reading" size="lg">
-          <img src={url} alt="Photo of the reading" className="w-full rounded-lg" />
+        <Modal open onClose={() => setOpen(false)} title="Photo" size="lg">
+          <img src={url} alt="Full-size view" className="w-full rounded-lg" />
         </Modal>
       ) : null}
     </>

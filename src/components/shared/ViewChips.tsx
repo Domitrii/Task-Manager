@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import type { NavItem } from '@/config/navigation'
 import { cn } from '@/lib/utils'
+import { chipClass } from '@/components/ui/Tabs'
 
 /** Sibling views of one section, as a scrollable row of chips under the page title. */
 export function ViewChips({ views, label }: { views: NavItem[]; label: string }) {
@@ -11,14 +12,7 @@ export function ViewChips({ views, label }: { views: NavItem[]; label: string })
           key={view.to}
           to={view.to}
           end={view.end}
-          className={({ isActive }) =>
-            cn(
-              'flex h-9 shrink-0 items-center rounded-full border px-4 text-sm font-semibold whitespace-nowrap transition-colors',
-              isActive
-                ? 'border-brand-600 bg-brand-600 text-white'
-                : 'border-line-default bg-surface text-ink-muted hover:border-line-strong hover:text-ink',
-            )
-          }
+          className={({ isActive }) => cn(chipClass(isActive), 'shrink-0')}
         >
           {view.label}
         </NavLink>

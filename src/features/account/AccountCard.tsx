@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { LogOut, RefreshCw } from 'lucide-react'
+import { LogOut, RefreshCw, TriangleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Card, CardBody, CardHeader } from '@/components/ui/Card'
 import { Field, TextInput } from '@/components/ui/Field'
@@ -82,7 +82,7 @@ function SignInAgainModal({ sync, onClose }: { sync: SyncApi; onClose: () => voi
       size="sm"
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>
+          <Button onClick={onClose}>
             Cancel
           </Button>
           <Button type="submit" form="sign-in-again" variant="primary" disabled={busy || !password}>
@@ -115,16 +115,19 @@ export function SignOutModal({ sync, onClose }: { sync: SyncApi; onClose: () => 
     <Modal
       open
       onClose={onClose}
-      title="Sign out of this device?"
-      description={pending > 0 ? 'This cannot be undone.' : undefined}
-      size="sm"
+      variant="alert"
+      icon={<TriangleAlert className="size-5" />}
+      title="Sign out?"
+      description={
+        pending > 0
+          ? `${pending} ${pending === 1 ? 'record hasn’t' : 'records haven’t'} synced yet. Signing out now deletes ${pending === 1 ? 'it' : 'them'} for good. Connect to the internet and wait for sync to finish to keep ${pending === 1 ? 'it' : 'them'}.`
+          : 'You’ll need to sign in again to use Mise.'
+      }
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>
-            Cancel
-          </Button>
+          <Button onClick={onClose}>Cancel</Button>
           <Button
-            variant={pending > 0 ? 'danger' : 'primary'}
+            variant="danger"
             disabled={busy}
             onClick={async () => {
               setBusy(true)
@@ -135,12 +138,6 @@ export function SignOutModal({ sync, onClose }: { sync: SyncApi; onClose: () => 
           </Button>
         </>
       }
-    >
-      <p className="text-ink-muted text-[13px]">
-        {pending > 0
-          ? `${pending} ${pending === 1 ? 'record hasn’t' : 'records haven’t'} synced yet. Signing out now deletes ${pending === 1 ? 'it' : 'them'} for good. Connect to the internet and wait for sync to finish to keep ${pending === 1 ? 'it' : 'them'}.`
-          : 'The team’s records stay safe. You’ll need your email and password to sign in on this device again.'}
-      </p>
-    </Modal>
+    />
   )
 }

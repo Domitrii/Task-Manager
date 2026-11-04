@@ -1,15 +1,20 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { LogOut, Moon, Sun, Trash2 } from 'lucide-react'
+import { staffRoleLabel } from '@/data/staffRoles'
+import { useStore } from '@/data/store'
 import { supabase } from '@/lib/supabase'
 import { useTheme, type Theme } from '@/lib/theme'
+import { useGoBack } from '@/lib/useGoBack'
 import { cn } from '@/lib/utils'
+import { Avatar } from '@/components/ui/Avatar'
 import { Button } from '@/components/ui/Button'
 import { Card, CardBody, CardHeader } from '@/components/ui/Card'
 import { Field, TextInput } from '@/components/ui/Field'
 import { Modal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { NotificationToggles } from '@/features/notifications/NotificationToggles'
 import { SignOutModal } from './AccountCard'
 import { authErrorMessage, useSync, type SyncApi } from './sync'
 import { teamErrorMessage } from './team'
@@ -21,17 +26,31 @@ import { teamErrorMessage } from './team'
  */
 export function ProfilePage() {
   const sync = useSync()
+  const goBack = useGoBack('/more')
+  const { data, activeStaff } = useStore()
 
   return (
     <div className="mx-auto max-w-2xl space-y-5">
-      <PageHeader
-        title="Your profile"
-        description={
-          sync
-            ? 'Your own account. What the whole team shares is in Settings.'
-            : 'Accounts aren’t set up for this app, so there’s only this device’s appearance to change.'
-        }
-      />
+      <PageHeader title="Your profile" onBack={goBack} />
+
+      <Card as="div" className="p-4">
+        <Avatar person={activeStaff} size="lg" />
+        <h2 className="font-display text-ink mt-3 text-xl font-bold">{activeStaff.name}</h2>
+        {sync ? <p className="text-ink-muted text-sm">{sync.email}</p> : null}
+        <dl className="mt-3 space-y-2">
+          <div>
+            <dt className="text-ink-subtle text-xs">Role</dt>
+            <dd className="text-ink text-sm">{staffRoleLabel(activeStaff)}</dd>
+          </div>
+          <div>
+            <dt className="text-ink-subtle text-xs">Venue</dt>
+            <dd className="text-ink text-sm">{data.settings.venueName}</dd>
+          </div>
+        </dl>
+      </Card>
+
+      <NotificationPreferencesSection />
+
       {sync && supabase ? (
         <>
           <NameCard sync={sync} />
@@ -47,6 +66,23 @@ export function ProfilePage() {
         </>
       ) : null}
     </div>
+  )
+}
+
+function NotificationPreferencesSection() {
+  const { data } = useStore()
+  return (
+    <section aria-labelledby="notification-preferences">
+      <h2 id="notification-preferences" className="font-display text-ink text-lg font-bold">
+        Notification preferences
+      </h2>
+      <p className="text-ink-muted mt-1 text-[13px]">
+        App preferences for {data.settings.venueName}, not device notification permission.
+      </p>
+      <div className="mt-3">
+        <NotificationToggles />
+      </div>
+    </section>
   )
 }
 
@@ -317,7 +353,7 @@ function TeamCard({ sync }: { sync: SyncApi }) {
       <CardBody>
         <p className="text-ink-muted text-[13px]">
           The team code, changing it and leaving the team are in{' '}
-          <Link to="/settings?tab=staff" className="text-brand-700 dark:text-brand-300 font-semibold hover:underline">
+          <Link to="/settings/manage?tab=staff" className="text-brand-700 dark:text-brand-300 font-semibold hover:underline">
             Settings → Team
           </Link>
           .
@@ -397,7 +433,7 @@ function DeleteAccountModal({ sync, onClose }: { sync: SyncApi; onClose: () => v
       size="sm"
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>
+          <Button onClick={onClose}>
             Cancel
           </Button>
           <Button type="submit" form="delete-account" variant="danger" disabled={busy || !password || pending > 0}>

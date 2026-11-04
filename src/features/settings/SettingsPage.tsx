@@ -24,6 +24,7 @@ import { CardList, TableWrap, Td, Th, Tr } from '@/components/ui/Table'
 import { Tabs } from '@/components/ui/Tabs'
 import { useToast } from '@/components/ui/Toast'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { useGoBack } from '@/lib/useGoBack'
 import { AccountCard } from '@/features/account/AccountCard'
 import { TeamCard } from '@/features/account/TeamCard'
 import { useSync } from '@/features/account/sync'
@@ -42,11 +43,13 @@ export function SettingsPage() {
   const tab: TabKey = TABS.find((key) => key === requested) ?? 'venue'
   const setTab = (next: TabKey) => setParams(next === 'venue' ? {} : { tab: next }, { replace: true })
   const waiting = useSync()?.joinRequests.length ?? 0
+  const goBack = useGoBack('/settings')
 
   return (
     <div className="space-y-5">
       <PageHeader
-        title="Settings"
+        onBack={goBack}
+        title="Venue, team and data"
         description="Everything the compliance rules are built from: equipment ranges, check windows, the team and your suppliers."
       />
 
@@ -363,7 +366,7 @@ function EquipmentModal({ item, onClose }: { item?: MonitoredItem; onClose: () =
       description="Ranges here drive every pass/fail decision in the app."
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>
+          <Button onClick={onClose}>
             Cancel
           </Button>
           <Button variant="primary" onClick={handleSave} disabled={!draft.name.trim()}>
@@ -557,7 +560,7 @@ function StaffModal({ member, onClose }: { member?: StaffMember; onClose: () => 
       size="sm"
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>
+          <Button onClick={onClose}>
             Cancel
           </Button>
           <Button variant="primary" onClick={handleSave} disabled={!draft.name.trim()}>
@@ -754,7 +757,7 @@ function SupplierModal({
       size="sm"
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>
+          <Button onClick={onClose}>
             Cancel
           </Button>
           <Button variant="primary" onClick={handleSave} disabled={!draft.name.trim()}>
@@ -905,7 +908,7 @@ function DataTab() {
         size="sm"
         footer={
           <>
-            <Button variant="ghost" onClick={close}>
+            <Button onClick={close}>
               Cancel
             </Button>
             <Button
@@ -935,7 +938,7 @@ function DataTab() {
         size="sm"
         footer={
           <>
-            <Button variant="ghost" onClick={close}>
+            <Button onClick={close}>
               Cancel
             </Button>
             <Button variant="danger" onClick={() => navigate('/setup/venue')}>

@@ -53,6 +53,59 @@ export function Tabs<T extends string>({
   )
 }
 
+/**
+ * Choosing what a page shows, as a row of chips. `stretch` shares the width
+ * evenly for a choice of two; otherwise the row swipes sideways.
+ */
+export function ChipTabs<T extends string>({
+  options,
+  value,
+  onChange,
+  label,
+  stretch = false,
+  className,
+}: {
+  options: TabOption<T>[]
+  value: T
+  onChange: (value: T) => void
+  label: string
+  stretch?: boolean
+  className?: string
+}) {
+  return (
+    <div
+      role="group"
+      aria-label={label}
+      className={cn(
+        'flex gap-2',
+        stretch ? 'grid grid-cols-2' : 'scrollbar-none -mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0',
+        className,
+      )}
+    >
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          aria-pressed={option.value === value}
+          onClick={() => onChange(option.value)}
+          className={cn(chipClass(option.value === value), !stretch && 'shrink-0')}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+export function chipClass(active: boolean): string {
+  return cn(
+    'flex h-10 items-center justify-center rounded-[10px] px-4 text-sm font-medium whitespace-nowrap transition-colors',
+    active
+      ? 'bg-brand-100 text-brand-700 dark:bg-brand-500/15 dark:text-brand-200'
+      : 'bg-surface text-ink-muted hover:text-ink',
+  )
+}
+
 /** Compact pill group for filters that sit inside a card header. */
 export function SegmentedControl<T extends string>({
   options,

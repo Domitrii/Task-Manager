@@ -7,8 +7,8 @@ type View = 'all' | 'opening-closing' | 'cleaning' | 'food-safety'
 
 const VIEWS: Record<View, { title: string; description: string; types: ChecklistType[] }> = {
   all: {
-    title: 'Checklists',
-    description: "Today's opening, closing, cleaning and food safety checklists.",
+    title: 'Sign-off checklists',
+    description: "Today's opening, closing, cleaning and food safety sign-offs.",
     types: ['opening', 'closing', 'cleaning', 'food_safety'],
   },
   'opening-closing': {

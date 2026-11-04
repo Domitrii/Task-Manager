@@ -108,7 +108,7 @@ export function SetupFlow() {
   }
 
   function back() {
-    if (step === 1) navigate(hasData ? '/settings' : '/setup')
+    if (step === 1) navigate(hasData ? '/settings/manage' : '/setup')
     else navigate(-1)
   }
 
@@ -160,7 +160,7 @@ export function SetupFlow() {
             {step} of {STEPS.length}
           </span>
           {hasData ? (
-            <Button variant="ghost" size="sm" onClick={() => navigate('/settings')} className="-mr-2">
+            <Button variant="ghost" size="sm" onClick={() => navigate('/settings/manage')} className="-mr-2">
               Cancel
             </Button>
           ) : null}

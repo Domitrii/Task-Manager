@@ -1,57 +1,42 @@
-import { useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useMemo, useState } from 'react'
 import { format } from 'date-fns'
-import { Flame, type LucideIcon, Package } from 'lucide-react'
-import {
-  selectDailyCompletion,
-  selectDashboard,
-  selectLogsForDay,
-  selectOrdersToCheckIn,
-  selectToday,
-} from '@/data/selectors'
+import { selectHome, type EntryAction } from '@/data/attention'
+import { selectDailyCompletion, selectDashboard, selectOrdersToCheckIn } from '@/data/selectors'
 import { useStore } from '@/data/store'
-import { formatTemp, formatTime } from '@/lib/format'
+import type { ID } from '@/data/types'
 import { useNow } from '@/lib/useNow'
 import { useQuickEntry } from '@/components/layout/quickEntry'
-import { DayStatus } from './DayStatus'
-import { DayTimeline } from './DayTimeline'
+import { Badge } from '@/components/ui/Badge'
+import { TaskRunModal } from '@/features/tasks/TaskRunModal'
+import { HomeCardView } from './HomeCard'
 import { AtAGlance, WeekStrip, type GlanceRow } from './TodayStats'
 
-/**
- * Home. Answers "what do I need to do now?" first, then "how are we doing?" —
- * the two questions people open the app with.
- */
+const PROBE_CATEGORIES = ['cooking', 'cooling'] as const
+
+/** Home. Says how the venue stands, and opens onto the three things people check on it. */
 export function TodayPage() {
   const now = useNow()
-  const { data, activeStaff } = useStore()
+  const { data } = useStore()
   const quickEntry = useQuickEntry()
-  const navigate = useNavigate()
+  // By id, so the sheet always shows the task as it is in the store.
+  const [runningId, setRunningId] = useState<ID | null>(null)
+  const running = data.tasks.find((task) => task.id === runningId)
 
-  const today = useMemo(() => selectToday(data, now), [data, now])
+  const home = useMemo(() => selectHome(data, now), [data, now])
   const week = useMemo(() => selectDailyCompletion(data, 7, now), [data, now])
   const summary = useMemo(() => selectDashboard(data, now), [data, now])
-
-  const hour = now.getHours()
-  const greeting = `${hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'}, ${activeStaff.name.split(' ')[0]}`
-
-  const probesToday = useMemo(() => {
-    const probed = new Set(
-      data.items.filter((item) => item.category === 'cooking' || item.category === 'cooling').map((item) => item.id),
-    )
-    return selectLogsForDay(data, now).filter((log) => probed.has(log.itemId))
-  }, [data, now])
-  const lastProbe = probesToday[0]
-  const lastDelivery = summary.deliveriesToday[0]
   const orders = useMemo(() => selectOrdersToCheckIn(data, now), [data, now])
   const toCheckIn = orders.due.length + orders.overdue.length
 
+  function open(action: EntryAction) {
+    if (action.kind === 'task') setRunningId(action.id)
+    else if (action.kind === 'checklist') quickEntry.openChecklist(action.id)
+    else if (action.kind === 'temperature') quickEntry.recordTemperature({ itemId: action.itemId })
+    else quickEntry.recordTemperature({ restrictTo: [...PROBE_CATEGORIES] })
+  }
+
   const glance: GlanceRow[] = [
-    {
-      label: 'Out of range today',
-      value: summary.failedLogsToday.length,
-      to: '/temperatures',
-      attention: 'fail',
-    },
+    { label: 'Out of range today', value: summary.failedLogsToday.length, to: '/temperatures', attention: 'fail' },
     {
       label: 'Open issues',
       detail: summary.highSeverityIssues.length > 0 ? `${summary.highSeverityIssues.length} high severity` : undefined,
@@ -70,107 +55,53 @@ export function TodayPage() {
     },
     {
       label: 'Orders to check in',
-      detail:
-        orders.overdue.length > 0
-          ? `${orders.overdue.length} overdue`
-          : orders.due.length > 0
-            ? 'Arriving today'
-            : undefined,
+      detail: orders.overdue.length > 0 ? `${orders.overdue.length} overdue` : orders.due.length > 0 ? 'Arriving today' : undefined,
       value: toCheckIn,
       to: '/deliveries',
       attention: orders.overdue.length > 0 ? 'fail' : 'warn',
-    },
-    {
-      label: 'Overdue tasks',
-      detail: `${summary.outstandingTasks.length} open in total`,
-      value: summary.overdueTasks.length,
-      to: '/tasks',
-      attention: 'warn',
     },
     { label: 'Low on stock', value: summary.lowStock.length, to: '/stock', attention: 'warn' },
   ]
 
   return (
-    <div className="grid gap-x-10 gap-y-10 pt-2 xl:grid-cols-[minmax(0,1fr)_21rem]">
-      <div className="min-w-0 space-y-10">
-        <DayStatus
-          today={today}
-          greeting={greeting}
-          dateLabel={format(now, 'EEEE d MMMM')}
-          failedReadings={summary.failedLogsToday.length}
-        />
+    <div className="grid gap-x-10 gap-y-10 xl:grid-cols-[minmax(0,1fr)_21rem]">
+      <div className="min-w-0">
+        <h1 className="font-display text-ink text-[28px] leading-tight font-bold">{data.settings.venueName}</h1>
+        <p className="text-ink-muted mt-3 text-sm">
+          {format(now, 'EEE d MMM, HH:mm')}
+          {home.period ? ` · ${home.period} shift` : ''}
+        </p>
+        <div className="mt-2">
+          {home.attention > 0 ? (
+            <Badge tone="fail">! {home.attention} {home.attention === 1 ? 'needs' : 'need'} attention</Badge>
+          ) : (
+            <Badge tone="pass">✓ All clear</Badge>
+          )}
+        </div>
 
-        <DayTimeline periods={today.periods} />
-
-        <section aria-labelledby="anytime" className="pl-10 sm:pl-11">
-          <h2 id="anytime" className="text-ink text-xl font-bold">
-            Anytime
-          </h2>
-          <p className="text-ink-muted mt-0.5 text-[15px]">Log these whenever they happen.</p>
-          <div className="bg-surface border-line divide-line mt-3 divide-y overflow-hidden rounded-xl border">
-            <AnytimeRow
-              icon={Flame}
-              title="Food probe"
-              detail={
-                lastProbe
-                  ? `${probesToday.length} today. Last: ${data.items.find((item) => item.id === lastProbe.itemId)?.name}, ${formatTemp(lastProbe.temperature)} at ${formatTime(lastProbe.recordedAt)}`
-                  : 'None logged yet today'
+        <div className="mt-5 space-y-3">
+          {home.cards.map((card) => (
+            <HomeCardView
+              key={card.key}
+              card={card}
+              onOpen={open}
+              onLogProbe={
+                card.key === 'probe'
+                  ? () => quickEntry.recordTemperature({ restrictTo: [...PROBE_CATEGORIES] })
+                  : undefined
               }
-              onClick={() => quickEntry.recordTemperature({ restrictTo: ['cooking', 'cooling'] })}
             />
-            <AnytimeRow
-              icon={Package}
-              title="Delivery"
-              detail={[
-                toCheckIn > 0 ? `${toCheckIn} order${toCheckIn === 1 ? '' : 's'} to check in.` : null,
-                lastDelivery
-                  ? `${summary.deliveriesToday.length} today. Last: ${data.suppliers.find((supplier) => supplier.id === lastDelivery.supplierId)?.name} at ${formatTime(lastDelivery.receivedAt)}`
-                  : 'None received yet today',
-              ]
-                .filter(Boolean)
-                .join(' ')}
-              // Expected orders are checked in against the order, from Deliveries.
-              onClick={toCheckIn > 0 ? () => navigate('/deliveries') : quickEntry.recordDelivery}
-            />
-          </div>
-        </section>
+          ))}
+        </div>
       </div>
 
-      <aside className="min-w-0 space-y-10 xl:pt-9" aria-label="Stats">
+      {/* Room to spare on a desktop, so the numbers behind the bell stay in view. */}
+      <aside className="hidden min-w-0 space-y-10 xl:block" aria-label="Stats">
         <WeekStrip days={week} />
         <AtAGlance rows={glance} />
       </aside>
-    </div>
-  )
-}
 
-function AnytimeRow({
-  icon: Icon,
-  title,
-  detail,
-  onClick,
-}: {
-  icon: LucideIcon
-  title: string
-  detail: string
-  onClick: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="hover:bg-surface-muted/60 flex min-h-16 w-full items-center gap-3 px-4 py-3 text-left transition-colors"
-    >
-      <span className="bg-surface-muted text-ink-muted flex size-10 shrink-0 items-center justify-center rounded-full">
-        <Icon className="size-[18px]" />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="text-ink block text-base font-semibold">{title}</span>
-        <span className="text-ink-muted line-clamp-2 text-sm">{detail}</span>
-      </span>
-      <span className="bg-brand-600 flex h-9 shrink-0 items-center rounded-full px-4 text-sm font-semibold text-white">
-        Log
-      </span>
-    </button>
+      {running ? <TaskRunModal key={running.id} task={running} onClose={() => setRunningId(null)} /> : null}
+    </div>
   )
 }

@@ -284,7 +284,15 @@ export function buildDataFromSetupPack(pack: SetupPack, answers: SetupAnswers, n
     issues: [],
     stock: [],
     tasks: [],
+    // Every venue opens and closes, so the Checklist starts with somewhere to put those.
+    taskSections: [
+      { id: createId('sc'), name: 'Opening routine', position: 0 },
+      { id: createId('sc'), name: 'Closing routine', position: 1 },
+    ],
     taskTemplates: [],
+    shifts: [],
+    unavailability: [],
+    invitations: [],
     settings: {
       venueName: answers.venueName.trim(),
       siteReference: '',

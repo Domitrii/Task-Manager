@@ -9,6 +9,7 @@
 import { addDays, addMinutes, subDays, subHours } from 'date-fns'
 import { periodInterval, deriveDeliveryStatus, evaluateTemperature, startOfDayLocal, toISODate } from '@/lib/compliance'
 import { createId } from '@/lib/utils'
+import { staffRoleLabel } from './staffRoles'
 import { DELIVERY_LIMITS, SAFE_RANGES } from './temperatureRanges'
 import type {
   AppData,
@@ -23,8 +24,11 @@ import type {
   Supplier,
   SupplierOrder,
   SupplierOrderLine,
+  Shift,
   Task,
+  TaskSection,
   TemperatureLog,
+  Unavailability,
   VenueSettings,
 } from './types'
 
@@ -69,7 +73,7 @@ export const DEFAULT_SETTINGS: VenueSettings = {
 }
 
 const staff: StaffMember[] = [
-  { id: 'st_amara', name: 'Amara Okafor', role: 'manager', initials: 'AO', active: true, pin: '1042' },
+  { id: 'st_amara', name: 'Amara Okafor', role: 'manager', initials: 'AO', active: true, pin: '1042', email: 'amara@copperlarder.example' },
   { id: 'st_tom', name: 'Tom Whitfield', role: 'head_chef', initials: 'TW', active: true, pin: '2288' },
   { id: 'st_lena', name: 'Lena Ferreira', role: 'chef', initials: 'LF', active: true, pin: '3317' },
   { id: 'st_marcus', name: 'Marcus Bell', role: 'chef', initials: 'MB', active: true, pin: '4409' },
@@ -665,6 +669,7 @@ function buildIssues(now: Date, logs: TemperatureLog[], deliveries: Delivery[]):
       linkedRecordId: log.id,
       resolution: index >= 2 ? 'Engineer attended, thermostat recalibrated. Monitored for 48 hours.' : undefined,
       resolvedAt: index >= 2 ? addMinutes(new Date(log.recordedAt), 600).toISOString() : undefined,
+      resolvedBy: index >= 2 ? 'st_tom' : undefined,
     })
   }
 
@@ -699,12 +704,25 @@ function buildIssues(now: Date, logs: TemperatureLog[], deliveries: Delivery[]):
     assigneeId: 'st_tom',
     resolution: 'Board destroyed, replacement received 12 Sep.',
     resolvedAt: subDays(now, 3).toISOString(),
+    resolvedBy: 'st_tom',
   })
 
   return issues.sort((a, b) => b.raisedAt.localeCompare(a.raisedAt))
 }
 
+const SECTIONS: TaskSection[] = [
+  { id: 'sc_opening', name: 'Opening routine', position: 0 },
+  { id: 'sc_closing', name: 'Closing routine', position: 1 },
+  { id: 'sc_week', name: 'This week', position: 2 },
+  { id: 'sc_admin', name: 'Compliance and admin', position: 3 },
+]
+
 function buildTasks(now: Date): Task[] {
+  const at = (hours: number, minutes = 0) => {
+    const time = new Date(now)
+    time.setHours(hours, minutes, 0, 0)
+    return time.toISOString()
+  }
   const dueToday = new Date(now)
   dueToday.setHours(18, 0, 0, 0)
   // An hour ago, but never before midnight, so it always counts as done today.
@@ -726,11 +744,99 @@ function buildTasks(now: Date): Task[] {
     { title: 'Review supplier temperature performance', description: 'Northern Catch and Greenfield both had rejections this fortnight.', assigneeId: 'st_amara', dueAt: addDays(now, 7).toISOString(), priority: 'low', status: 'todo', category: 'admin' },
   ]
 
-  return base.map((task, index) => ({
+  const routine = (
+    sectionId: string,
+    title: string,
+    dueAt: string,
+    assigneeId: string,
+    extra: Partial<Task> = {},
+  ): Omit<Task, 'id' | 'createdAt'> => ({
+    title,
+    dueAt,
+    assigneeId,
+    sectionId,
+    repeat: 'daily',
+    priority: 'normal',
+    status: 'todo',
+    category: 'prep',
+    ...extra,
+  })
+  const routines = [
+    routine('sc_opening', 'Check fridge and freezer temperatures', at(8, 30), 'st_amara', { priority: 'high', category: 'compliance' }),
+    routine('sc_opening', 'Wash hands and put on clean apron', at(8, 10), 'st_amara', { status: 'done', completedAt: doneToday.toISOString(), completedBy: 'st_amara' }),
+    routine('sc_opening', 'Switch on ovens and grill', at(8, 20), 'st_amara', { status: 'done', completedAt: doneToday.toISOString(), completedBy: 'st_amara' }),
+    routine('sc_opening', 'Check allergen information is up to date', at(10, 30), 'st_amara', {
+      status: 'in_progress',
+      category: 'compliance',
+      description:
+        'Check the current menu, supplier ingredient labels and the allergen folder before service. Include today’s specials and tell the team about any substitutions before the briefing.',
+    }),
+    routine('sc_opening', 'Check sanitiser and probe wipes are stocked', at(10, 30), 'st_priya'),
+    routine('sc_opening', 'Sanitise prep surfaces', at(10), 'st_priya', { photoRequired: true }),
+    routine('sc_closing', 'Label and date all open food', at(21, 45), 'st_amara', { category: 'compliance' }),
+    routine('sc_closing', 'Check fridge and freezer doors are closed', at(22, 15), 'st_amara'),
+    routine('sc_closing', 'Clean and sanitise surfaces and equipment', at(22), 'st_priya', { photoRequired: true }),
+  ]
+  const others = base.map((task) => ({
+    ...task,
+    sectionId: task.category === 'compliance' || task.category === 'admin' ? 'sc_admin' : 'sc_week',
+  }))
+
+  return [...routines, ...others].map((task, index) => ({
     ...task,
     id: createId('tk'),
     createdAt: subDays(now, 10 - (index % 8)).toISOString(),
   }))
+}
+
+/** A fortnight either side of today, so the week and the list both have something to show. */
+function buildShifts(now: Date): Shift[] {
+  const today = startOfDayLocal(now)
+  const shifts: Shift[] = []
+  staff
+    .filter((person) => person.active)
+    .forEach((person, index) => {
+      for (let offset = -7; offset <= 13; offset += 1) {
+        const day = addDays(today, offset)
+        // Everyone works four days, starting from a different one. The first person is always on today.
+        const working = (day.getDay() + index) % 7 < 4 || (index === 0 && offset === 0)
+        if (!working) continue
+        const date = toISODate(day)
+        const startTime = index % 2 === 0 ? '08:00' : '14:00'
+        const endTime = index % 2 === 0 ? '16:00' : '22:00'
+        const clocked = offset < 0
+        shifts.push({
+          id: createId('sh'),
+          staffId: person.id,
+          date,
+          startTime,
+          endTime,
+          role: staffRoleLabel(person),
+          details:
+            index % 2 === 0
+              ? 'Kitchen opening and lunch service, including delivery handover.'
+              : 'Evening service and close down.',
+          clockedInAt: clocked ? new Date(`${date}T${index % 2 === 0 ? '07:58' : '13:57'}:00`).toISOString() : undefined,
+          clockedOutAt: clocked ? new Date(`${date}T${endTime}:00`).toISOString() : undefined,
+        })
+      }
+    })
+  return shifts
+}
+
+function buildUnavailability(now: Date): Unavailability[] {
+  const nextThursday = addDays(startOfDayLocal(now), (4 - now.getDay() + 7) % 7 || 7)
+  return [
+    {
+      id: createId('un'),
+      staffId: 'st_amara',
+      startDate: toISODate(nextThursday),
+      endDate: toISODate(nextThursday),
+      allDay: true,
+      note: 'Appointment',
+      createdAt: subDays(now, 2).toISOString(),
+    },
+  ]
 }
 
 /* -------------------------------------------------------------------------- */
@@ -741,11 +847,21 @@ export function createSeedData(now: Date = new Date()): AppData {
   const generated = buildDeliveries(now)
   const { orders: supplierOrders, deliveries } = buildOrders(now, generated)
 
+  const soon = toISODate(addDays(now, 7))
   return {
-    staff,
+    // Someone with training about to run out, so the team page has something to say.
+    staff: staff.map((person) =>
+      person.id === 'st_tom'
+        ? { ...person, certificates: [{ id: 'ce_tom', name: 'Food hygiene certificate', expiresOn: soon }] }
+        : person,
+    ),
     items,
     temperatureLogs,
-    suppliers,
+    suppliers: suppliers.map((supplier, index) => ({
+      ...supplier,
+      email: index % 2 === 0 ? `orders@${supplier.name.toLowerCase().replace(/[^a-z]+/g, '')}.example` : undefined,
+      deliveryDays: index % 3 === 2 ? undefined : index % 2 === 0 ? ['tue', 'thu', 'sat'] : ['mon', 'wed', 'fri'],
+    })),
     deliveries,
     supplierOrders,
     checklistTemplates,
@@ -758,6 +874,10 @@ export function createSeedData(now: Date = new Date()): AppData {
       lastCountedBy: pick(kitchenStaff).id,
     })),
     tasks: buildTasks(now),
+    taskSections: SECTIONS,
+    shifts: buildShifts(now),
+    unavailability: buildUnavailability(now),
+    invitations: [],
     // Templates are saved from the library one by one, as a venue picks the ones it uses.
     taskTemplates: [],
     settings: DEFAULT_SETTINGS,

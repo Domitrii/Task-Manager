@@ -352,7 +352,7 @@ export class SupabaseRepository implements DataRepository {
         try {
           this.setStatus({ state: 'syncing' })
           const rows = await this.fetch(null, true)
-          this.setStatus({ state: 'synced', lastSyncedAt: new Date().toISOString() })
+          this.landed()
           return rows
         } catch (error) {
           this.fail(error)
@@ -412,7 +412,7 @@ export class SupabaseRepository implements DataRepository {
         await this.pull()
         // After the records, so a photo that won't go up never holds them back.
         await this.pushPhotos()
-        this.setStatus({ state: 'synced', lastSyncedAt: new Date().toISOString() })
+        this.landed()
       } while (this.again && this.active)
     } catch (error) {
       this.fail(error)
@@ -541,6 +541,11 @@ export class SupabaseRepository implements DataRepository {
       if (data.length === 0) return rows
       rows.push(...(data as RecordRow[]))
     }
+  }
+
+  /** The records are safe either way, but the connection can drop as the last request lands. */
+  private landed(): void {
+    this.setStatus({ state: navigator.onLine ? 'synced' : 'offline', lastSyncedAt: new Date().toISOString() })
   }
 
   private fail(error: unknown): void {

@@ -157,8 +157,10 @@ test.describe('in a team', () => {
   })
 
   for (const [name, path, tab] of [
-    ['team settings', '/settings', 'Team'],
+    ['team settings', '/settings/manage', 'Team'],
     ['profile', '/profile', null],
+    ['sync settings', '/settings/sync', null],
+    ['notifications, with someone asking to join', '/notifications', null],
     ['temperature review', '/temperatures/review', null],
     ['today, with someone asking to join', '/', null],
   ] as const) {
@@ -171,6 +173,49 @@ test.describe('in a team', () => {
       expect(errors).toEqual([])
     })
   }
+})
+
+test.describe('signed in', () => {
+  test.beforeEach(async ({ page }) => {
+    await openDemo(page)
+    const records = await page.evaluate(() => localStorage.getItem('mise.appdata.v1'))
+    await page.goto('about:blank')
+    await page.addInitScript((saved) => {
+      if (!sessionStorage.getItem('seeded')) {
+        localStorage.setItem('mise.appdata.v1', saved ?? '')
+        sessionStorage.setItem('seeded', 'yes')
+      }
+    }, records)
+    await fakeSupabase(page, { member: true })
+    await signedIn(page, { team: TEAM })
+  })
+
+  test('the profile menu says how sync stands, and signing out asks first', async ({ page }) => {
+    await page.goto(`${ACCOUNTS_URL}/`)
+    await page.getByRole('button', { name: /^Signed in as/ }).click()
+    await expect(page.getByRole('button', { name: /Sync now$/ })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Your profile' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Team' })).toBeVisible()
+    await expectToFitScreen(page)
+
+    await page.getByRole('button', { name: 'Sign out' }).click()
+    const alert = page.getByRole('alertdialog')
+    await expect(alert.getByRole('heading', { name: 'Sign out?' })).toBeVisible()
+    await expectToFitScreen(page)
+    await alert.getByRole('button', { name: 'Cancel' }).click()
+    await expect(alert).toHaveCount(0)
+  })
+
+  test('the sync page offers a sync, unless the device is offline', async ({ page, context }) => {
+    await page.goto(`${ACCOUNTS_URL}/settings/sync`)
+    await expect(page.getByRole('heading', { name: 'Sync', level: 1 })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Sync now' }).first()).toBeEnabled()
+
+    await context.setOffline(true)
+    await page.evaluate(() => window.dispatchEvent(new Event('offline')))
+    await expect(page.getByRole('button', { name: 'Sync now' }).first()).toBeDisabled()
+    await context.setOffline(false)
+  })
 })
 
 // Keeps the two copies of the app from being confused in a failure message.

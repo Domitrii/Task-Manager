@@ -32,7 +32,7 @@ export function CancelOrderModal({ order, onClose }: { order: SupplierOrder; onC
       size="sm"
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>
+          <Button onClick={onClose}>
             Keep order
           </Button>
           <Button variant="danger" onClick={handleCancel}>
@@ -77,7 +77,7 @@ export function MoveDeliveryModal({ order, onClose }: { order: SupplierOrder; on
       size="sm"
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>
+          <Button onClick={onClose}>
             Cancel
           </Button>
           <Button variant="primary" onClick={handleSave}>

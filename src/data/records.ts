@@ -49,7 +49,11 @@ const LISTS: { [K in ListKey]: Compare<K> | null } = {
   issues: null,
   stock: null,
   tasks: null,
+  taskSections: null,
   taskTemplates: null,
+  shifts: (a, b) => `${a.date} ${a.startTime}`.localeCompare(`${b.date} ${b.startTime}`),
+  unavailability: (a, b) => a.startDate.localeCompare(b.startDate),
+  invitations: (a, b) => b.createdAt.localeCompare(a.createdAt),
 }
 
 export const LIST_KEYS = Object.keys(LISTS) as ListKey[]
@@ -66,7 +70,11 @@ export const EMPTY_DATA: AppData = {
   issues: [],
   stock: [],
   tasks: [],
+  taskSections: [],
   taskTemplates: [],
+  shifts: [],
+  unavailability: [],
+  invitations: [],
   settings: {
     venueName: '',
     siteReference: '',

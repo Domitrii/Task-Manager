@@ -97,7 +97,7 @@ export function EditReadingModal({ log, onClose }: { log: TemperatureLog; onClos
       size="lg"
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>
+          <Button onClick={onClose}>
             Cancel
           </Button>
           <Button variant="primary" onClick={save} disabled={!canSave}>

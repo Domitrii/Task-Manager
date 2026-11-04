@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { format } from 'date-fns'
 import { ChevronLeft, Pencil, TriangleAlert } from 'lucide-react'
 import { staffName } from '@/data/selectors'
 import { useStore } from '@/data/store'
@@ -23,6 +24,7 @@ import { Checkbox, Select, TextInput, Textarea } from '@/components/ui/Field'
 import { Modal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
 import { templatePath } from '@/features/templates/editing'
+import { PhotoProofField, StoredPhoto } from '@/features/temperatures/ReadingPhoto'
 import { QuestionListEditor } from '@/features/templates/QuestionEditor'
 
 /**
@@ -30,8 +32,9 @@ import { QuestionListEditor } from '@/features/templates/QuestionEditor'
  * this task only; the template it came from stays as it was.
  */
 export function TaskRunModal({ task, onClose }: { task: Task; onClose: () => void }) {
-  const { data, updateTask } = useStore()
+  const { data, activeStaff, updateTask, addTaskPhoto } = useStore()
   const toast = useToast()
+  const [photo, setPhoto] = useState<Blob | null>(null)
   const [questions, setQuestions] = useState<TaskQuestion[]>(task.questions ?? [])
   const [answers, setAnswers] = useState<Record<ID, TaskAnswer>>(task.answers ?? {})
   const [editing, setEditing] = useState(false)
@@ -40,6 +43,7 @@ export function TaskRunModal({ task, onClose }: { task: Task; onClose: () => voi
 
   const draft = { questions, answers }
   const unfinished = unfinishedQuestions(draft)
+  const needsPhoto = Boolean(task.photoRequired) && !task.photo && !photo
   const exceptions = exceptionCount(draft)
   const score = taskScore(draft)
   const answered = questions.filter((question) => isAnswered(question, answers[question.id])).length
@@ -58,15 +62,22 @@ export function TaskRunModal({ task, onClose }: { task: Task; onClose: () => voi
   function save(changes: Partial<Task> = {}) {
     // Starting on the questions moves a task along, so the list shows someone is on it.
     const started = task.status === 'todo' && Object.keys(answers).length > 0
-    updateTask(task.id, { questions, answers, ...(started ? { status: 'in_progress' } : {}), ...changes })
+    updateTask(task.id, {
+      questions,
+      answers,
+      ...(photo ? { photo: addTaskPhoto(task.id, photo) } : {}),
+      ...(started ? { status: 'in_progress' } : {}),
+      ...changes,
+    })
   }
 
   function complete() {
-    if (unfinished.length > 0) {
+    if (unfinished.length > 0 || needsPhoto) {
       setEditing(false)
       setShowProblems(true)
+      const first = unfinished.length > 0 ? `answer-${unfinished[0].id}` : 'task-photo-field'
       requestAnimationFrame(() =>
-        document.getElementById(`answer-${unfinished[0].id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }),
+        document.getElementById(first)?.scrollIntoView({ block: 'center', behavior: 'smooth' }),
       )
       return
     }
@@ -173,7 +184,9 @@ export function TaskRunModal({ task, onClose }: { task: Task; onClose: () => voi
           </div>
 
           {questions.length === 0 ? (
-            <p className="text-ink-muted text-sm">This task has no questions. Complete it when it’s done.</p>
+            task.photoRequired ? null : (
+              <p className="text-ink-muted text-sm">This task has no questions. Complete it when it’s done.</p>
+            )
           ) : (
             <ol className="space-y-4">
               {questions.map((question, index) => (
@@ -188,6 +201,24 @@ export function TaskRunModal({ task, onClose }: { task: Task; onClose: () => voi
               ))}
             </ol>
           )}
+
+          {task.photo ? (
+            <div>
+              <p className="text-ink mb-1.5 text-sm font-semibold">Photo</p>
+              <StoredPhoto path={task.photo} size="lg" />
+            </div>
+          ) : task.photoRequired ? (
+            <div id="task-photo-field">
+              <PhotoProofField
+                id="task-photo"
+                photo={photo}
+                onChange={setPhoto}
+                hint="Showing the job done."
+                caption={() => `${task.title} · ${format(new Date(), 'd MMM yyyy, HH:mm')} · ${activeStaff.name}`}
+                error={showProblems && needsPhoto ? 'Take a photo before completing this task.' : undefined}
+              />
+            </div>
+          ) : null}
 
           {showProblems && unfinished.length > 0 ? (
             <p className="text-fail-600 dark:text-fail-500 flex items-center gap-1.5 text-[13px] font-medium" role="alert">

@@ -4,13 +4,12 @@ import { cn } from '@/lib/utils'
 export type BadgeTone = 'neutral' | 'pass' | 'warn' | 'fail' | 'info' | 'brand'
 
 const TONES: Record<BadgeTone, string> = {
-  neutral:
-    'bg-surface-muted text-ink-muted ring-line-default dark:bg-white/5 dark:text-ink-muted',
-  pass: 'bg-pass-50 text-pass-700 ring-pass-500/25 dark:bg-pass-500/12 dark:text-pass-500',
-  warn: 'bg-warn-50 text-warn-700 ring-warn-500/25 dark:bg-warn-500/12 dark:text-warn-500',
-  fail: 'bg-fail-50 text-fail-700 ring-fail-500/25 dark:bg-fail-500/12 dark:text-fail-500',
-  info: 'bg-info-50 text-info-700 ring-info-500/25 dark:bg-info-500/12 dark:text-info-500',
-  brand: 'bg-brand-50 text-brand-700 ring-brand-500/25 dark:bg-brand-500/12 dark:text-brand-300',
+  neutral: 'bg-surface-muted text-ink-muted',
+  pass: 'bg-pass-50 text-pass-700 dark:bg-pass-500/12 dark:text-pass-500',
+  warn: 'bg-warn-50 text-warn-700 dark:bg-warn-500/12 dark:text-warn-500',
+  fail: 'bg-fail-50 text-fail-700 dark:bg-fail-500/15 dark:text-fail-500',
+  info: 'bg-info-50 text-info-700 dark:bg-info-500/12 dark:text-info-500',
+  brand: 'bg-brand-100 text-brand-700 dark:bg-brand-500/12 dark:text-brand-300',
 }
 
 export function Badge({
@@ -27,7 +26,7 @@ export function Badge({
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset',
+        'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold',
         TONES[tone],
         className,
       )}

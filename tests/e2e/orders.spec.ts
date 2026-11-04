@@ -29,7 +29,7 @@ test.describe('supplier orders', () => {
   })
 
   test('repeating an order makes a new draft with the same items and prices, leaving the old one', async ({ page }) => {
-    await visit(page, '/suppliers')
+    await visit(page, '/suppliers/orders')
     const harrow = card(page, 'Harrow & Sons Butchers')
     const history = harrow.getByRole('heading', { name: /^History/ })
     const historyBefore = (await history.textContent()) ?? ""
@@ -49,7 +49,7 @@ test.describe('supplier orders', () => {
   })
 
   test('a new order shows on Suppliers with everything the manager put in it', async ({ page }) => {
-    await visit(page, '/suppliers')
+    await visit(page, '/suppliers/orders')
     await page.getByRole('button', { name: 'New order' }).first().click()
     const dialog = page.getByRole('dialog')
     await dialog.getByLabel('Supplier').selectOption({ label: 'Oakfield Bakery' })
@@ -77,7 +77,7 @@ test.describe('supplier orders', () => {
   })
 
   test('a product ordered before comes with its last price', async ({ page }) => {
-    await visit(page, '/suppliers')
+    await visit(page, '/suppliers/orders')
     await card(page, 'Harrow & Sons Butchers').getByRole('button', { name: 'New order' }).click()
     const dialog = page.getByRole('dialog')
     await dialog.getByPlaceholder('e.g. Chicken breast, skin-on').fill('beef mince 20%')
@@ -88,7 +88,7 @@ test.describe('supplier orders', () => {
   })
 
   test('checking an order in records a delivery against it, discrepancies and all', async ({ page }) => {
-    await visit(page, '/deliveries')
+    await visit(page, '/deliveries/records')
     const waiting = page.locator('section[aria-labelledby="due-today"]')
     await waiting.locator('li').filter({ hasText: 'Greenfield Produce' }).getByRole('button', { name: 'Check in' }).click()
 
@@ -103,7 +103,7 @@ test.describe('supplier orders', () => {
     await expect(waiting.locator('li').filter({ hasText: 'Greenfield Produce' })).toHaveCount(0)
     await expect(page.locator('tbody tr').filter({ hasText: 'Greenfield Produce' }).first()).toContainText('Discrepancies')
 
-    await visit(page, '/suppliers')
+    await visit(page, '/suppliers/orders')
     const latest = card(page, 'Greenfield Produce').getByRole('button', { name: /^Delivered/ }).first()
     await expect(latest).toContainText('Discrepancies')
   })
@@ -113,13 +113,13 @@ test.describe('supplier orders', () => {
     await page.getByRole('button', { name: /Switch person/ }).click()
     await page.getByRole('button', { name: /^LF Lena Ferreira/ }).click()
 
-    await visit(page, '/suppliers')
+    await visit(page, '/suppliers/orders')
     await expect(card(page, 'Harrow & Sons Butchers')).toBeVisible()
     await expect(page.getByRole('button', { name: 'New order' })).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'Edit order' })).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'Repeat this order' })).toHaveCount(0)
 
-    await visit(page, '/deliveries')
+    await visit(page, '/deliveries/records')
     await expect(page.getByRole('button', { name: 'Move delivery date' })).toHaveCount(0)
     const waiting = page.locator('section[aria-labelledby="due-today"]')
     await waiting.locator('li').filter({ hasText: 'Northern Catch Seafood' }).getByRole('button', { name: 'Check in' }).click()
@@ -142,7 +142,8 @@ test.describe('supplier orders', () => {
     const amara = (text: string) => Number(text.match(/Amara Okafor (\d+)/)?.[1] ?? 0)
     const before = await label()
 
-    // Due today, and Amara is the one on the device.
+    // Due today, on someone else's list; Amara is the one on the device.
+    await page.getByRole('group', { name: 'Show tasks' }).getByRole('button', { name: 'Team' }).click()
     await page
       .locator('li')
       .filter({ hasText: 'Label and date everything in the walk-in' })

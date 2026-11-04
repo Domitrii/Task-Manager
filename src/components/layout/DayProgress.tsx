@@ -15,6 +15,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { avatarFill } from '@/components/ui/avatarColors'
 import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
+import type { HeaderProgress } from './headerProgress'
 
 const KINDS: Record<DayWorkKind, { one: string; many: string; to: string; late: string }> = {
   check: { one: 'temperature check', many: 'temperature checks', to: '/', late: 'missed' },
@@ -26,51 +27,41 @@ const KINDS: Record<DayWorkKind, { one: string; many: string; to: string; late: 
 const describe = (count: number, kind: DayWorkKind) => `${count} ${count === 1 ? KINDS[kind].one : KINDS[kind].many}`
 
 /**
- * Today's whole list as one bar across the top of every page. What's done is
- * coloured by who did it, in their avatar colour, biggest share first, so
- * everyone can see how the day is going and who's been putting it in.
+ * How the day is going, in the top band of every page. A page can say what its
+ * own list stands at instead; the sheet always has the whole day, and everyone
+ * who has been putting it in.
  */
-export function DayProgressBar() {
+export function DayProgressBar({ own }: { own: HeaderProgress | null }) {
   const now = useNow()
   const { data } = useStore()
   const progress = useMemo(() => selectDayProgress(data, now), [data, now])
   const [open, setOpen] = useState(false)
 
-  if (progress.total === 0) return null
+  if (progress.total === 0 && !own) return null
 
   const shares = progress.contributors
     .map((person) => `${staffMember(data, person.staffId)?.name ?? 'Not recorded'} ${person.count}`)
     .join(', ')
-  const leaders = progress.contributors.filter((person) => person.staffId !== undefined).slice(0, 3)
+  const label =
+    own?.label ?? (progress.done === progress.total ? 'All tasks complete' : `${progress.done} of ${progress.total} tasks`)
+  const share = own ? percent(own.done, own.total) : percent(progress.done, progress.total)
 
   return (
     <>
-      <div className="px-2 pb-1.5 sm:px-4 lg:px-6">
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          aria-label={`Today: ${progress.done} of ${progress.total} done${shares ? ` (${shares})` : ''}. Show who did what`}
-          className="hover:bg-surface-muted/70 flex w-full items-center gap-3 rounded-lg px-2 py-1 transition-colors"
-        >
-          <span className="text-ink-muted shrink-0 text-xs">
-            <span className="text-ink tabular font-semibold">{progress.done}</span>/{progress.total}
-            <span className="hidden sm:inline"> done today</span>
-          </span>
-          <Segments progress={progress} className="h-2 flex-1" seam="border-app" />
-          {leaders.length > 0 ? (
-            <span className="hidden shrink-0 -space-x-1.5 sm:flex" aria-hidden>
-              {leaders.map((person) => (
-                <Avatar
-                  key={person.staffId}
-                  person={staffMember(data, person.staffId)}
-                  size="xs"
-                  className="ring-2 ring-[var(--app-bg)]"
-                />
-              ))}
-            </span>
-          ) : null}
-        </button>
-      </div>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-label={`${label}. Today: ${progress.done} of ${progress.total} done${shares ? ` (${shares})` : ''}. Show who did what`}
+        className="block w-full px-4 pt-0.5 pb-3 text-left sm:px-6 lg:px-8"
+      >
+        <span className="block truncate text-[13px] text-white/90">{label}</span>
+        <span className="bg-header-track mt-1.5 block h-1 overflow-hidden rounded-full" aria-hidden>
+          <span
+            className="block h-full rounded-full bg-white transition-[width] duration-500"
+            style={{ width: `${share}%` }}
+          />
+        </span>
+      </button>
       {open ? <DayProgressSheet progress={progress} onClose={() => setOpen(false)} /> : null}
     </>
   )

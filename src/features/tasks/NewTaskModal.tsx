@@ -4,10 +4,11 @@ import { ChevronDown, Plus, RotateCcw, Trash2 } from 'lucide-react'
 import { staffName } from '@/data/selectors'
 import { useStore } from '@/data/store'
 import { newTemplateTask, resolveQuestions } from '@/data/taskQuestions'
-import type { AppData, TaskCategory, TaskPriority, TaskTemplate, TemplateTask } from '@/data/types'
+import { NO_SECTION, NO_SECTION_NAME, orderedSections, REPEAT_LABELS } from '@/data/tasks'
+import type { AppData, TaskCategory, TaskPriority, TaskRepeat, TaskTemplate, TemplateTask } from '@/data/types'
 import { cn, createId, titleCase } from '@/lib/utils'
 import { Button, IconButton } from '@/components/ui/Button'
-import { Field, Select, TextInput, Textarea } from '@/components/ui/Field'
+import { Field, Select, TextInput, Textarea, ToggleRow } from '@/components/ui/Field'
 import { Modal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
 import { QuestionListEditor } from '@/features/templates/QuestionEditor'
@@ -36,14 +37,18 @@ function questionsLabel(count: number): string {
  * changed first, for these tasks only: delete tasks, add one, rename them, and
  * change their questions and how each is answered.
  */
-export function NewTaskModal({ onClose }: { onClose: () => void }) {
+export function NewTaskModal({ onClose, defaultSectionId }: { onClose: () => void; defaultSectionId?: string }) {
   const { data, activeStaffId, addTasks } = useStore()
   const toast = useToast()
   const [templateId, setTemplateId] = useState('')
   const [drafts, setDrafts] = useState<TemplateTask[]>(() => [newTemplateTask()])
   const [openId, setOpenId] = useState<string | null>(null)
+  const [sectionId, setSectionId] = useState(defaultSectionId ?? '')
   const [assigneeId, setAssigneeId] = useState(activeStaffId)
   const [dueAt, setDueAt] = useState('')
+  const [repeat, setRepeat] = useState<TaskRepeat>('none')
+  const [photoRequired, setPhotoRequired] = useState(false)
+  const [showDetails, setShowDetails] = useState(false)
   const [submitted, setSubmitted] = useState(false)
 
   // Only templates with something in them are worth offering.
@@ -51,6 +56,10 @@ export function NewTaskModal({ onClose }: { onClose: () => void }) {
   const template = templates.find((entry) => entry.id === templateId)
   const single = drafts.length === 1
   const untitled = drafts.filter((draft) => draft.title.trim() === '')
+  const sections = orderedSections(data.taskSections)
+  const noSection = submitted && sectionId === ''
+  const noAssignee = submitted && assigneeId === ''
+  const noTitle = submitted && single && drafts[0].title.trim() === ''
 
   function chooseTemplate(id: string) {
     setTemplateId(id)
@@ -82,6 +91,7 @@ export function NewTaskModal({ onClose }: { onClose: () => void }) {
       setOpenId(untitled[0].id)
       return
     }
+    if (sectionId === '' || assigneeId === '') return
     addTasks(
       drafts.map((draft) => ({
         title: draft.title.trim(),
@@ -89,10 +99,13 @@ export function NewTaskModal({ onClose }: { onClose: () => void }) {
         priority: draft.priority,
         category: draft.category,
         questions: draft.questions.length > 0 ? draft.questions : undefined,
-        assigneeId: assigneeId || undefined,
+        assigneeId,
         dueAt: dueAt ? new Date(dueAt).toISOString() : undefined,
         status: 'todo' as const,
         templateId: template?.id,
+        sectionId: sectionId === NO_SECTION ? undefined : sectionId,
+        repeat: repeat === 'none' ? undefined : repeat,
+        photoRequired: photoRequired || undefined,
       })),
     )
     const assigned = `assigned to ${staffName(data, assigneeId)}`
@@ -105,61 +118,57 @@ export function NewTaskModal({ onClose }: { onClose: () => void }) {
     <Modal
       open
       onClose={onClose}
+      variant="page"
       title="New task"
       size="lg"
       footer={
-        <>
-          <Button variant="ghost" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button variant="primary" onClick={handleSave} disabled={drafts.length === 0}>
-            {single || drafts.length === 0 ? 'Create task' : `Create ${drafts.length} tasks`}
-          </Button>
-        </>
+        <Button variant="primary" size="lg" onClick={handleSave} disabled={drafts.length === 0}>
+          {single || drafts.length === 0 ? 'Create task' : `Create ${drafts.length} tasks`}
+        </Button>
       }
     >
-      <div className="space-y-5">
-        <Field
-          label="Template to use"
-          hint={
-            templates.length === 0 ? (
-              <>
-                Optional. No saved templates yet:{' '}
-                <Link to="/templates" onClick={onClose} className="text-brand-700 dark:text-brand-300 font-medium underline">
-                  add some from the library
-                </Link>
-                .
-              </>
-            ) : template ? (
-              'Change anything below for these tasks only. The saved template stays as it is.'
-            ) : (
-              'Optional. Fills in the tasks and the questions to answer.'
-            )
-          }
-          htmlFor="task-template"
-        >
-          <Select
-            id="task-template"
-            value={templateId}
-            disabled={templates.length === 0}
-            onChange={(event) => chooseTemplate(event.target.value)}
+      <div className="space-y-4">
+        {templates.length > 0 ? (
+          <Field
+            label="Template to use"
+            hint={
+              template
+                ? 'Change anything below for these tasks only. The saved template stays as it is.'
+                : 'Optional. Fills in the tasks and the questions to answer.'
+            }
+            htmlFor="task-template"
           >
-            <option value="">No template</option>
-            {templateGroups(templates).map(([group, entries]) => (
-              <optgroup key={group} label={group}>
-                {entries.map((entry) => (
-                  <option key={entry.id} value={entry.id}>
-                    {entry.icon ? `${entry.icon} ` : ''}
-                    {entry.name || 'Untitled template'}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </Select>
-        </Field>
+            <Select id="task-template" value={templateId} onChange={(event) => chooseTemplate(event.target.value)}>
+              <option value="">No template</option>
+              {templateGroups(templates).map(([group, entries]) => (
+                <optgroup key={group} label={group}>
+                  {entries.map((entry) => (
+                    <option key={entry.id} value={entry.id}>
+                      {entry.icon ? `${entry.icon} ` : ''}
+                      {entry.name || 'Untitled template'}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </Select>
+          </Field>
+        ) : null}
 
         {single ? (
-          <DraftEditor draft={drafts[0]} onChange={updateDraft} submitted={submitted} />
+          <Field label="Task name" required htmlFor="task-name" error={noTitle ? 'Enter a task name.' : undefined}>
+            <Textarea
+              id="task-name"
+              rows={2}
+              value={drafts[0].title}
+              autoFocus={drafts[0].title === ''}
+              placeholder="Enter task name"
+              className={cn(
+                'min-h-11 resize-none',
+                noTitle && 'border-fail-500 focus:border-fail-500 focus:ring-fail-500/15',
+              )}
+              onChange={(event) => updateDraft({ ...drafts[0], title: event.target.value })}
+            />
+          </Field>
         ) : (
           <div>
             <div className="mb-1.5 flex items-center justify-between gap-3">
@@ -174,7 +183,7 @@ export function NewTaskModal({ onClose }: { onClose: () => void }) {
               ) : null}
             </div>
             {drafts.length > 0 ? (
-              <ol className="border-line divide-line divide-y rounded-lg border">
+              <ol className="border-line bg-surface divide-line divide-y rounded-lg border">
                 {drafts.map((draft, index) => (
                   <DraftRow
                     key={draft.id}
@@ -197,28 +206,102 @@ export function NewTaskModal({ onClose }: { onClose: () => void }) {
           </div>
         )}
 
+        <Field label="Section" required htmlFor="task-section" error={noSection ? 'Choose a section.' : undefined}>
+          <Select
+            id="task-section"
+            value={sectionId}
+            invalid={noSection}
+            onChange={(event) => setSectionId(event.target.value)}
+          >
+            <option value="">Choose a section</option>
+            {sections.map((section) => (
+              <option key={section.id} value={section.id}>
+                {section.name}
+              </option>
+            ))}
+            <option value={NO_SECTION}>{NO_SECTION_NAME}</option>
+          </Select>
+        </Field>
+
+        <Field label="Due time" hint={single ? undefined : 'For every task above.'} htmlFor="task-due">
+          <TextInput id="task-due" type="datetime-local" value={dueAt} onChange={(event) => setDueAt(event.target.value)} />
+        </Field>
+
+        <Field
+          label="Assigned to"
+          required
+          htmlFor="task-assignee"
+          error={noAssignee ? 'Choose who it’s for.' : undefined}
+          hint={single ? undefined : 'For every task above.'}
+        >
+          <Select
+            id="task-assignee"
+            value={assigneeId}
+            invalid={noAssignee}
+            onChange={(event) => setAssigneeId(event.target.value)}
+          >
+            <option value="">Choose someone</option>
+            {data.staff
+              .filter((person) => person.active)
+              .map((person) => (
+                <option key={person.id} value={person.id}>
+                  {person.name}
+                  {person.id === activeStaffId ? ' (you)' : ''}
+                </option>
+              ))}
+          </Select>
+        </Field>
+
+        <Field label="Repeat" htmlFor="task-repeat">
+          <Select id="task-repeat" value={repeat} onChange={(event) => setRepeat(event.target.value as TaskRepeat)}>
+            {(Object.keys(REPEAT_LABELS) as TaskRepeat[]).map((option) => (
+              <option key={option} value={option}>
+                {REPEAT_LABELS[option]}
+              </option>
+            ))}
+          </Select>
+        </Field>
+
+        <ToggleRow
+          title="Photo required"
+          description="Ask for a photo when completing."
+          checked={photoRequired}
+          onChange={setPhotoRequired}
+        />
+
+        {single ? (
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowDetails((current) => !current)}
+              aria-expanded={showDetails}
+              className="text-brand-700 dark:text-brand-300 flex items-center gap-1 text-sm font-semibold"
+            >
+              More details
+              <ChevronDown className={cn('size-4 transition-transform', showDetails && 'rotate-180')} />
+            </button>
+            {showDetails ? (
+              <div className="mt-3">
+                <DraftEditor draft={drafts[0]} onChange={updateDraft} />
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
         <Button variant="ghost" size="sm" onClick={addDraft} className="gap-1.5">
           <Plus className="size-4" />
           Add {single ? 'another' : 'a'} task
         </Button>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Assign to" hint={single ? undefined : 'For every task above.'} htmlFor="task-assignee">
-            <Select id="task-assignee" value={assigneeId} onChange={(event) => setAssigneeId(event.target.value)}>
-              <option value="">Unassigned</option>
-              {data.staff
-                .filter((person) => person.active)
-                .map((person) => (
-                  <option key={person.id} value={person.id}>
-                    {person.name}
-                  </option>
-                ))}
-            </Select>
-          </Field>
-          <Field label="Due" hint="Optional" htmlFor="task-due">
-            <TextInput id="task-due" type="datetime-local" value={dueAt} onChange={(event) => setDueAt(event.target.value)} />
-          </Field>
-        </div>
+        {templates.length === 0 ? (
+          <p className="text-ink-muted text-[13px]">
+            Starting from a template?{' '}
+            <Link to="/templates" onClick={onClose} className="text-brand-700 dark:text-brand-300 font-medium underline">
+              Add some from the library
+            </Link>
+            .
+          </p>
+        ) : null}
       </div>
     </Modal>
   )
@@ -233,7 +316,6 @@ function DraftRow({
   onToggle,
   onChange,
   onDelete,
-  submitted,
 }: {
   draft: TemplateTask
   number: number
@@ -281,40 +363,31 @@ function DraftRow({
         </IconButton>
       </div>
       {open ? (
-        <div className="border-line bg-surface-muted/40 border-t px-3 py-4">
-          <DraftEditor draft={draft} onChange={onChange} submitted={submitted} />
+        <div className="border-line bg-surface-muted/40 space-y-4 border-t px-3 py-4">
+          <Field label="Task" required htmlFor={`${draft.id}-title`} error={invalid ? 'Enter a task name.' : undefined}>
+            <TextInput
+              id={`${draft.id}-title`}
+              value={draft.title}
+              autoFocus={draft.title === ''}
+              invalid={invalid}
+              placeholder="Enter task name"
+              onChange={(event) => onChange({ ...draft, title: event.target.value })}
+            />
+          </Field>
+          <DraftEditor draft={draft} onChange={onChange} />
         </div>
       ) : null}
     </li>
   )
 }
 
-/** The task itself and its questions. */
-function DraftEditor({
-  draft,
-  onChange,
-  submitted,
-}: {
-  draft: TemplateTask
-  onChange: (draft: TemplateTask) => void
-  submitted: boolean
-}) {
+/** What's behind the task: its detail, how it's filed and its questions. */
+function DraftEditor({ draft, onChange }: { draft: TemplateTask; onChange: (draft: TemplateTask) => void }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const set = (changes: Partial<TemplateTask>) => onChange({ ...draft, ...changes })
-  const missingTitle = submitted && draft.title.trim() === ''
 
   return (
     <div className="space-y-4">
-      <Field label="Task" required htmlFor={`${draft.id}-title`} error={missingTitle ? 'Give the task a name.' : undefined}>
-        <TextInput
-          id={`${draft.id}-title`}
-          value={draft.title}
-          autoFocus={draft.title === ''}
-          invalid={missingTitle}
-          placeholder="e.g. Book the annual extraction clean"
-          onChange={(event) => set({ title: event.target.value })}
-        />
-      </Field>
       <Field label="Detail" hint="Optional" htmlFor={`${draft.id}-description`}>
         <Textarea
           id={`${draft.id}-description`}

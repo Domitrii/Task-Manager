@@ -30,4 +30,4 @@ export function templatePath(templateId: string): string {
   return `/settings/templates/${templateId}`
 }
 
-export const MANAGE_TEMPLATES_PATH = '/settings?tab=templates'
+export const MANAGE_TEMPLATES_PATH = '/settings/manage?tab=templates'

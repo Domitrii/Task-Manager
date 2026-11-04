@@ -7,24 +7,24 @@ export type ButtonSize = 'sm' | 'md' | 'lg'
 
 const VARIANTS: Record<ButtonVariant, string> = {
   // Disabled primaries drop to the neutral surface rather than a tinted or
-  // alpha-blended teal, which left the white label close to illegible.
+  // alpha-blended terracotta, which left the white label close to illegible.
   primary:
-    'bg-brand-600 text-white shadow-xs hover:bg-brand-700 active:bg-brand-800 disabled:bg-surface-muted disabled:text-ink-subtle disabled:shadow-none',
+    'bg-brand-600 text-white hover:bg-brand-700 active:bg-brand-800 disabled:bg-surface-muted disabled:text-ink-subtle',
   secondary:
-    'bg-surface text-ink border border-line-default shadow-xs hover:bg-surface-muted active:bg-surface-muted disabled:text-ink-subtle',
+    'bg-surface text-ink border border-line hover:bg-surface-muted active:bg-surface-muted disabled:text-ink-subtle',
   ghost: 'text-ink-muted hover:bg-surface-muted hover:text-ink disabled:text-ink-subtle',
-  danger: 'bg-fail-600 text-white shadow-xs hover:bg-fail-700 active:bg-fail-700 disabled:bg-surface-muted disabled:text-ink-subtle disabled:shadow-none',
-  subtle: 'bg-brand-50 text-brand-700 hover:bg-brand-100 dark:bg-brand-950 dark:text-brand-200 dark:hover:bg-brand-900',
+  danger: 'bg-fail-600 text-white hover:bg-fail-700 active:bg-fail-700 disabled:bg-surface-muted disabled:text-ink-subtle',
+  subtle: 'bg-brand-100 text-brand-700 hover:bg-brand-200 dark:bg-brand-950 dark:text-brand-200 dark:hover:bg-brand-900',
 }
 
 const SIZES: Record<ButtonSize, string> = {
   sm: 'h-8 px-3 text-[13px] gap-1.5 rounded-lg',
-  md: 'h-10 px-4 text-sm gap-2 rounded-lg',
-  lg: 'h-12 px-5 text-[15px] gap-2 rounded-xl',
+  md: 'h-11 px-4 text-sm gap-2 rounded-[10px]',
+  lg: 'h-12 px-5 text-[15px] gap-2 rounded-[10px]',
 }
 
 const BASE =
-  'inline-flex items-center justify-center font-medium whitespace-nowrap transition-colors select-none disabled:cursor-not-allowed'
+  'inline-flex items-center justify-center font-semibold whitespace-nowrap transition-colors select-none disabled:cursor-not-allowed'
 
 interface CommonProps {
   variant?: ButtonVariant
@@ -78,7 +78,7 @@ export function IconButton({
   children,
   ...props
 }: Omit<CommonProps, 'block'> & { label: string } & ButtonHTMLAttributes<HTMLButtonElement>) {
-  const square = size === 'sm' ? 'size-8 rounded-lg' : size === 'lg' ? 'size-12 rounded-xl' : 'size-10 rounded-lg'
+  const square = size === 'sm' ? 'size-8 rounded-lg' : size === 'lg' ? 'size-12 rounded-[10px]' : 'size-11 rounded-[10px]'
   return (
     <button
       type="button"

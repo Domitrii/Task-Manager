@@ -81,7 +81,7 @@ export function QrLabelsPage() {
             icon={<QrCode className="size-5" />}
             title="Nothing to label yet"
             description="Add your fridges, freezers and hot-holding units in Settings, then come back to print their labels."
-            action={<ButtonLink to="/settings">Go to Settings</ButtonLink>}
+            action={<ButtonLink to="/settings/manage?tab=equipment">Go to Settings</ButtonLink>}
           />
         </Card>
       ) : (

@@ -39,7 +39,7 @@ export function DeliveryDetailModal({
       size="lg"
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>
+          <Button onClick={onClose}>
             Close
           </Button>
           <Button onClick={() => onRepeat(delivery)} className="gap-1.5">

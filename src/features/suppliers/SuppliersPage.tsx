@@ -18,6 +18,7 @@ import { Button, ButtonLink } from '@/components/ui/Button'
 import { Card, CardHeader } from '@/components/ui/Card'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { useGoBack } from '@/lib/useGoBack'
 import { StatCard } from '@/components/shared/StatCard'
 import { useSync } from '@/features/account/sync'
 import { LINE_CATEGORIES } from '@/features/deliveries/lines'
@@ -42,6 +43,7 @@ type Sheet =
  * Deliveries page to be checked in. Below, each supplier with what came before.
  */
 export function SuppliersPage() {
+  const goBack = useGoBack('/suppliers')
   const now = useNow()
   const { data } = useStore()
   const manager = useIsManager()
@@ -87,6 +89,7 @@ export function SuppliersPage() {
   return (
     <div className="space-y-5">
       <PageHeader
+        onBack={goBack}
         title="Suppliers & orders"
         description={
           manager
@@ -95,7 +98,7 @@ export function SuppliersPage() {
         }
         actions={
           <>
-            <ButtonLink to="/settings?tab=suppliers">
+            <ButtonLink to="/settings/manage?tab=suppliers">
               <Settings2 className="size-4" />
               Edit suppliers
             </ButtonLink>
@@ -169,7 +172,7 @@ export function SuppliersPage() {
               }
               action={
                 suppliers.length === 0 ? (
-                  <ButtonLink variant="primary" size="sm" to="/settings?tab=suppliers">
+                  <ButtonLink variant="primary" size="sm" to="/settings/manage?tab=suppliers">
                     Add suppliers
                   </ButtonLink>
                 ) : manager ? (
@@ -303,7 +306,7 @@ function WhoCanOrder() {
           </>
         )}
       </p>
-      <ButtonLink size="sm" variant="ghost" to="/settings?tab=staff">
+      <ButtonLink size="sm" variant="ghost" to="/settings/manage?tab=staff">
         Team settings
       </ButtonLink>
     </div>

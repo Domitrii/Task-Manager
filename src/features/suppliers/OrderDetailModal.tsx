@@ -56,7 +56,7 @@ export function OrderDetailModal({
       size="lg"
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>
+          <Button onClick={onClose}>
             Close
           </Button>
           {open && onCancel ? (
@@ -83,7 +83,7 @@ export function OrderDetailModal({
             </Button>
           ) : null}
           {delivery ? (
-            <ButtonLink variant="primary" to={`/deliveries?id=${delivery.id}`}>
+            <ButtonLink variant="primary" to={`/deliveries/records?id=${delivery.id}`}>
               Delivery record
             </ButtonLink>
           ) : null}

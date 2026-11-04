@@ -19,10 +19,10 @@ interface ToastApi {
 
 const ToastContext = createContext<ToastApi | null>(null)
 
-const TONES: Record<ToastTone, { icon: typeof CheckCircle2; className: string }> = {
-  success: { icon: CheckCircle2, className: 'text-pass-600 dark:text-pass-500' },
-  error: { icon: AlertTriangle, className: 'text-fail-600 dark:text-fail-500' },
-  info: { icon: Info, className: 'text-info-600 dark:text-info-500' },
+const TONES: Record<ToastTone, { icon: typeof CheckCircle2; className: string; tint: string }> = {
+  success: { icon: CheckCircle2, className: 'text-pass-600 dark:text-pass-500', tint: 'bg-pass-50 dark:bg-[#1f2d24]' },
+  error: { icon: AlertTriangle, className: 'text-fail-600 dark:text-fail-500', tint: 'bg-fail-50 dark:bg-[#35201f]' },
+  info: { icon: Info, className: 'text-info-600 dark:text-info-500', tint: 'bg-surface' },
 }
 
 export function ToastProvider({ children }: { children: ReactNode }) {
@@ -48,16 +48,17 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext value={api}>
       {children}
-      {/* Top on phones and tablets, where the tab bar and bottom sheets own the
-          bottom edge; a toast there would sit over "Save and next". */}
-      <div className="pointer-events-none fixed inset-x-0 top-[env(safe-area-inset-top)] z-[60] flex flex-col items-center gap-2 p-3 lg:inset-x-auto lg:top-auto lg:right-0 lg:bottom-0 lg:items-end lg:p-4">
+      {/* Just above the tab bar on phones and tablets, and above a page's pinned
+          action. With a sheet open it moves to the top, where it can't sit over
+          the sheet's "Save and next". */}
+      <div className="pointer-events-none fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-[60] flex flex-col items-center gap-2 p-3 lg:inset-x-auto lg:right-0 lg:bottom-0 lg:items-end lg:p-4 [body:has([data-pinned-action])_&]:bottom-[calc(8rem+env(safe-area-inset-bottom))] [body:has([data-pinned-action])_&]:lg:bottom-0 [body:has([role=dialog])_&]:top-[env(safe-area-inset-top)] [body:has([role=dialog])_&]:bottom-auto [body:has([role=dialog])_&]:lg:top-auto [body:has([role=dialog])_&]:lg:bottom-0">
         {entries.map((entry) => {
-          const { icon: Icon, className } = TONES[entry.tone]
+          const { icon: Icon, className, tint } = TONES[entry.tone]
           return (
             <div
               key={entry.id}
               role="status"
-              className="bg-surface border-line shadow-overlay pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-xl border p-3.5"
+              className={cn('shadow-raised pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-xl p-3.5', tint)}
             >
               <Icon className={cn('mt-0.5 size-4.5 shrink-0', className)} />
               <div className="min-w-0 flex-1">

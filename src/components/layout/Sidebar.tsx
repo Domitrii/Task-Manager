@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { PRIMARY_NAV, RECORD_NAV, SETTINGS_NAV, TEMPLATES_NAV, type NavBadge, type NavItem } from '@/config/navigation'
+import { CALENDAR_NAV, PRIMARY_NAV, RECORD_NAV, SETTINGS_NAV, TEAM_NAV, TEMPLATES_NAV, type NavBadge, type NavItem } from '@/config/navigation'
 import { useStore } from '@/data/store'
 import { cn } from '@/lib/utils'
 import { Logo } from './Logo'
@@ -34,7 +34,7 @@ function NavRow({ item, counters }: { item: NavItem; counters: NavCounters }) {
         cn(
           'group flex h-10 items-center gap-3 rounded-lg px-3 text-[15px] font-medium transition-colors',
           isActive
-            ? 'bg-brand-50 text-brand-800 dark:bg-brand-500/12 dark:text-brand-200'
+            ? 'bg-brand-100 text-brand-800 dark:bg-brand-500/12 dark:text-brand-200'
             : 'text-ink-muted hover:bg-surface-muted hover:text-ink',
         )
       }
@@ -69,6 +69,7 @@ export function Sidebar({ counters }: { counters: NavCounters }) {
           {PRIMARY_NAV.map((item) => (
             <NavRow key={item.to} item={item} counters={counters} />
           ))}
+          <NavRow item={CALENDAR_NAV} counters={counters} />
         </div>
 
         <p className="text-ink-subtle mt-7 mb-1.5 px-3 text-[13px] font-medium">Records</p>
@@ -81,6 +82,7 @@ export function Sidebar({ counters }: { counters: NavCounters }) {
         <p className="text-ink-subtle mt-7 mb-1.5 px-3 text-[13px] font-medium">Plan</p>
         <div className="space-y-0.5">
           <NavRow item={TEMPLATES_NAV} counters={counters} />
+          <NavRow item={TEAM_NAV} counters={counters} />
         </div>
       </nav>
 

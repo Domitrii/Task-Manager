@@ -73,7 +73,7 @@ export function MenuItem({
       type="button"
       onClick={onClick}
       className={cn(
-        'hover:bg-surface-muted flex w-full items-start gap-2.5 px-3 py-2 text-left text-sm transition-colors',
+        'hover:bg-surface-muted flex w-full items-start gap-2.5 px-3.5 py-2.5 text-left text-sm transition-colors',
         tone === 'danger' ? 'text-fail-600 dark:text-fail-500' : 'text-ink',
       )}
     >

@@ -38,7 +38,7 @@ export function CardHeader({
       )}
     >
       <div className="min-w-0">
-        <h2 className="text-ink text-[15px] leading-6 font-semibold">{title}</h2>
+        <h2 className="font-display text-ink text-[17px] leading-6 font-bold">{title}</h2>
         {description ? <p className="text-ink-muted mt-0.5 text-[13px]">{description}</p> : null}
       </div>
       {action ? <div className="flex shrink-0 items-center gap-2">{action}</div> : null}
@@ -52,7 +52,7 @@ export function CardBody({ className, children }: { className?: string; children
 
 export function CardFooter({ className, children }: { className?: string; children: ReactNode }) {
   return (
-    <div className={cn('border-line bg-surface-muted/60 rounded-b-card border-t px-4 py-3 sm:px-5', className)}>
+    <div className={cn('border-line rounded-b-card border-t px-4 py-3 sm:px-5', className)}>
       {children}
     </div>
   )

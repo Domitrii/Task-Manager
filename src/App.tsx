@@ -1,14 +1,30 @@
 import { Suspense, lazy } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { AppShell } from '@/components/layout/AppShell'
+import { LogoMark } from '@/components/layout/Logo'
 import { Button } from '@/components/ui/Button'
 import { useStore } from '@/data/store'
 import { useSync } from '@/features/account/sync'
+import { CalendarPage } from '@/features/calendar/CalendarPage'
+import { ShiftDetailPage } from '@/features/calendar/ShiftDetailPage'
 import { DeliveriesPage } from '@/features/deliveries/DeliveriesPage'
-import { FoodSafetyPage } from '@/features/checklists/FoodSafetyPage'
+import { DeliveriesBoard } from '@/features/deliveries/DeliveriesBoard'
+import { ExpectedDeliveryPage, ReceivedDeliveryPage } from '@/features/deliveries/DeliveryPages'
 import { ChecklistsPage } from '@/features/checklists/pages'
+import { IssueDetailPage } from '@/features/issues/IssueDetailPage'
+import { IssuesPage } from '@/features/issues/IssuesPage'
+import { MorePage } from '@/features/more/MorePage'
+import { NotificationsPage } from '@/features/notifications/NotificationsPage'
+import { StockItemPage } from '@/features/stock/StockItemPage'
 import { StockPage } from '@/features/stock/StockPage'
+import { SupplierDetailPage } from '@/features/suppliers/SupplierDetailPage'
+import { SuppliersListPage } from '@/features/suppliers/SuppliersListPage'
 import { SuppliersPage } from '@/features/suppliers/SuppliersPage'
+import { StaffDetailPage } from '@/features/team/StaffDetailPage'
+import { TeamPage } from '@/features/team/TeamPage'
+import { ApplianceDetailPage } from '@/features/temperatures/ApplianceDetailPage'
+import { FoodProbePage } from '@/features/temperatures/FoodProbePage'
+import { TempsPage } from '@/features/temperatures/TempsPage'
 import { TasksPage } from '@/features/tasks/TasksPage'
 import { ScanPage } from '@/features/qr/ScanPage'
 import { TodayPage } from '@/features/today/TodayPage'
@@ -21,6 +37,14 @@ const ReportsPage = lazy(async () => ({
 const SettingsPage = lazy(async () => ({
   default: (await import('@/features/settings/SettingsPage')).SettingsPage,
 }))
+const settingsPage = <Name extends keyof typeof import('@/features/settings/SettingsHub')>(name: Name) =>
+  lazy(async () => ({ default: (await import('@/features/settings/SettingsHub'))[name] }))
+const SettingsHubPage = settingsPage('SettingsHubPage')
+const AccountVenuePage = settingsPage('AccountVenuePage')
+const NotificationSettingsPage = settingsPage('NotificationSettingsPage')
+const ThresholdsPage = settingsPage('ThresholdsPage')
+const SyncPage = settingsPage('SyncPage')
+const HelpPage = settingsPage('HelpPage')
 const QrLabelsPage = lazy(async () => ({
   default: (await import('@/features/qr/QrLabelsPage')).QrLabelsPage,
 }))
@@ -73,7 +97,9 @@ export function App() {
       <Route element={hasData ? <AppShell /> : <Navigate to="/setup" replace />}>
         <Route index element={<TodayPage />} />
         <Route path="temperatures">
-          <Route index element={<AllTemperaturesPage />} />
+          <Route index element={<TempsPage />} />
+          <Route path="records" element={<AllTemperaturesPage />} />
+          <Route path="appliance/:id" element={<ApplianceDetailPage />} />
           <Route path="cooking" element={<CookingTemperaturesPage />} />
           <Route path="fridges" element={<FridgeTemperaturesPage />} />
           <Route path="freezers" element={<FreezerTemperaturesPage />} />
@@ -95,9 +121,16 @@ export function App() {
             }
           />
         </Route>
-        <Route path="deliveries" element={<DeliveriesPage />} />
-        <Route path="suppliers" element={<SuppliersPage />} />
-        <Route path="food-safety" element={<FoodSafetyPage />} />
+        <Route path="food-probe" element={<FoodProbePage />} />
+        <Route path="deliveries" element={<DeliveriesBoard />} />
+        <Route path="deliveries/records" element={<DeliveriesPage />} />
+        <Route path="deliveries/order/:id" element={<ExpectedDeliveryPage />} />
+        <Route path="deliveries/received/:id" element={<ReceivedDeliveryPage />} />
+        <Route path="suppliers" element={<SuppliersListPage />} />
+        <Route path="suppliers/orders" element={<SuppliersPage />} />
+        <Route path="suppliers/:id" element={<SupplierDetailPage />} />
+        <Route path="food-safety" element={<IssuesPage />} />
+        <Route path="food-safety/:id" element={<IssueDetailPage />} />
         <Route path="checklists">
           <Route index element={<ChecklistsPage view="all" />} />
           <Route path="opening-closing" element={<ChecklistsPage view="opening-closing" />} />
@@ -108,7 +141,14 @@ export function App() {
         <Route path="cleaning" element={<Navigate to="/checklists/cleaning" replace />} />
         <Route path="opening-closing" element={<Navigate to="/checklists/opening-closing" replace />} />
         <Route path="stock" element={<StockPage />} />
+        <Route path="stock/:id" element={<StockItemPage />} />
+        <Route path="team" element={<TeamPage />} />
+        <Route path="team/:id" element={<StaffDetailPage />} />
+        <Route path="notifications" element={<NotificationsPage />} />
+        <Route path="more" element={<MorePage />} />
         <Route path="tasks" element={<TasksPage />} />
+        <Route path="calendar" element={<CalendarPage />} />
+        <Route path="calendar/shift/:id" element={<ShiftDetailPage />} />
         <Route
           path="templates"
           element={
@@ -129,10 +169,27 @@ export function App() {
           path="settings"
           element={
             <Suspense fallback={<PageSkeleton />}>
+              <SettingsHubPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="settings/manage"
+          element={
+            <Suspense fallback={<PageSkeleton />}>
               <SettingsPage />
             </Suspense>
           }
         />
+        {[
+          { path: 'account', page: <AccountVenuePage /> },
+          { path: 'notifications', page: <NotificationSettingsPage /> },
+          { path: 'thresholds', page: <ThresholdsPage /> },
+          { path: 'sync', page: <SyncPage /> },
+          { path: 'help', page: <HelpPage /> },
+        ].map(({ path, page }) => (
+          <Route key={path} path={`settings/${path}`} element={<Suspense fallback={<PageSkeleton />}>{page}</Suspense>} />
+        ))}
         <Route
           path="profile"
           element={
@@ -186,17 +243,7 @@ function BootSplash({ firstLoad = false }: { firstLoad?: boolean }) {
   return (
     <div className="flex h-full items-center justify-center">
       <div className="flex flex-col items-center gap-3">
-        <span className="bg-brand-600 flex size-11 animate-pulse items-center justify-center rounded-xl">
-          <svg viewBox="0 0 24 24" className="size-6" fill="none" aria-hidden>
-            <path
-              d="M7 3v8a2 2 0 0 0 2 2v8a1.2 1.2 0 0 0 2.4 0v-8a2 2 0 0 0 2-2V3"
-              stroke="#d5eff2"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-            />
-            <path d="M17.4 3c1.5 1.2 1.8 4.3 0 5.8V21" stroke="#7bcad6" strokeWidth="1.8" strokeLinecap="round" />
-          </svg>
-        </span>
+        <LogoMark className="size-11 animate-pulse rounded-xl" />
         <p className="text-ink-muted text-sm">Loading your venue…</p>
         {waiting ? <p className="text-ink-muted max-w-xs px-4 text-center text-[13px]">{waiting}</p> : null}
         {/* Nothing is on this device yet, so there is nothing for signing out to lose. */}

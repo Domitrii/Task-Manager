@@ -167,7 +167,7 @@ export function DeliveryFormModal({
       size="xl"
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>
+          <Button onClick={onClose}>
             Cancel
           </Button>
           <Button variant="primary" onClick={handleSave} disabled={!canSave}>

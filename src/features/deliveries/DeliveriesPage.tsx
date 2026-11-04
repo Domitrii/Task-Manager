@@ -22,6 +22,7 @@ import { Select, TextInput } from '@/components/ui/Field'
 import { Tabs } from '@/components/ui/Tabs'
 import { CardList, TableWrap, Td, Th, Tr } from '@/components/ui/Table'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { useGoBack } from '@/lib/useGoBack'
 import { StatCard } from '@/components/shared/StatCard'
 import { DeliveryStatusBadge, DiscrepancyBadge } from '@/components/shared/StatusBadge'
 import { DeliveryDetailModal } from './DeliveryDetailModal'
@@ -31,7 +32,7 @@ import { DueOrders } from './DueOrders'
 type TabKey = 'all' | 'today' | 'rejections' | 'useby'
 
 /** The reading to show for a delivery: the first one over its limit, or else the first probed. */
-function worstTemperature(delivery: Delivery, settings: VenueSettings) {
+export function worstTemperature(delivery: Delivery, settings: VenueSettings) {
   const temps = delivery.lines.filter((line) => line.temperature !== null)
   const worst = temps.reduce<{ value: number; failed: boolean } | null>((acc, line) => {
     const limit = deliveryTempLimit(line, settings)
@@ -42,9 +43,11 @@ function worstTemperature(delivery: Delivery, settings: VenueSettings) {
   return { worst, probed: temps.length }
 }
 
+/** The full record: every delivery, rejections and the use-by watch. */
 export function DeliveriesPage() {
   const now = useNow()
   const { data } = useStore()
+  const goBack = useGoBack('/deliveries')
   const [searchParams, setSearchParams] = useSearchParams()
 
   // Today's page first; history, rejections and the use-by watch are a tab away.
@@ -108,6 +111,7 @@ export function DeliveriesPage() {
   return (
     <div className="space-y-5">
       <PageHeader
+        onBack={goBack}
         title="Deliveries & goods receiving"
         description="Today’s deliveries: check in the orders due today, and record anything that turns up without one. Past deliveries are in the tabs below."
         actions={

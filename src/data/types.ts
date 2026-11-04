@@ -38,6 +38,13 @@ export interface StaffMember {
    * before have one worked out (see `data/staffColors.ts`).
    */
   color?: number
+  /** What they want the bell to tell them about. Anything left out stays on. */
+  notifications?: NotificationPreferences
+  /** Notifications they've read, so the bell only counts what's new to them. */
+  readAlerts?: string[]
+  /** The address on their account, when they have one. */
+  email?: string
+  certificates?: Certificate[]
 }
 
 /* -------------------------------------------------------------------------- */
@@ -60,6 +67,13 @@ export type MonitoredCategory =
 /** Named slots in the trading day. Windows are configured in settings. */
 export type CheckPeriod = 'opening' | 'midday' | 'evening' | 'closing'
 
+/** Training someone holds, and when it runs out. */
+export interface Certificate {
+  id: ID
+  name: string
+  expiresOn: ISODate
+}
+
 export interface MonitoredItem {
   id: ID
   name: string
@@ -69,6 +83,12 @@ export interface MonitoredItem {
   minTemp: number | null
   /** Inclusive upper bound in °C. `null` means "no upper limit". */
   maxTemp: number | null
+  /**
+   * When set, `maxTemp` is the target and only a reading above this fails, e.g.
+   * a fridge aimed at 0–5°C that fails above 8°C. Absent, anything above
+   * `maxTemp` fails.
+   */
+  failAbove?: number
   /**
    * Periods this item must be checked in each day. Empty means the item is
    * checked ad-hoc (cooking probes happen per batch, not on a timetable).
@@ -133,8 +153,14 @@ export interface Supplier {
   categories: DeliveryLineCategory[]
   contactName?: string
   phone?: string
+  email?: string
+  address?: string
+  /** The days they usually deliver. */
+  deliveryDays?: Weekday[]
   active: boolean
 }
+
+export type Weekday = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun'
 
 export type DeliveryLineCategory = 'chilled' | 'frozen' | 'ambient' | 'produce' | 'bakery' | 'non_food'
 
@@ -304,6 +330,21 @@ export interface FoodSafetyIssue {
   linkedRecordId?: ID
   resolution?: string
   resolvedAt?: ISODateTime
+  /** Issues resolved before this was kept don't say. */
+  resolvedBy?: ID
+  /** Every change to the resolution after it was first saved, oldest first. */
+  resolutionEdits?: IssueResolutionEdit[]
+  /** Resolved, and waiting for a manager to agree. Issues resolved before sign-off existed don't have it. */
+  needsSignOff?: boolean
+  signedOffBy?: ID
+  signedOffAt?: ISODateTime
+}
+
+export interface IssueResolutionEdit {
+  at: ISODateTime
+  by: ID
+  /** What the resolution said before this change. */
+  before: string
 }
 
 /* -------------------------------------------------------------------------- */
@@ -355,7 +396,77 @@ export interface Task {
   answers?: Record<ID, TaskAnswer>
   /** The template this task was added from, when it was. */
   templateId?: ID
+  /** The named group it sits in on the Checklist. Absent, or a group since removed, means "Other tasks". */
+  sectionId?: ID
+  /** Place in its section once someone has put the list in order. New tasks have none and go on top. */
+  position?: number
+  /** Finishing a repeating task puts the next one on the list. */
+  repeat?: TaskRepeat
+  /** The task this one follows on from, so ticking and unticking never makes two. */
+  repeatOf?: ID
+  /** A photo has to be taken to complete it. */
+  photoRequired?: boolean
+  /** Where that photo is kept; see `DataRepository.addPhoto`. */
+  photo?: string
 }
+
+export type TaskRepeat = 'none' | 'daily' | 'weekly' | 'monthly'
+
+/** A named group of tasks on the Checklist, such as "Opening routine". */
+export interface TaskSection {
+  id: ID
+  name: string
+  /** Sections show in this order, lowest first. */
+  position: number
+}
+
+/* -------------------------------------------------------------------------- */
+/* Calendar — who's working when                                               */
+/* -------------------------------------------------------------------------- */
+
+/** Clock times in 24h "HH:mm". A shift ending earlier than it starts runs past midnight. */
+export type ClockTime = string
+
+export interface Shift {
+  id: ID
+  staffId: ID
+  date: ISODate
+  startTime: ClockTime
+  endTime: ClockTime
+  /** What they're working as on this shift. */
+  role?: string
+  /** Shown under "Shift information". */
+  details?: string
+  clockedInAt?: ISODateTime
+  clockedOutAt?: ISODateTime
+  createdBy?: ID
+}
+
+/** Time someone has said they can't work. */
+export interface Unavailability {
+  id: ID
+  staffId: ID
+  startDate: ISODate
+  endDate: ISODate
+  allDay: boolean
+  /** Only when not all day. */
+  startTime?: ClockTime
+  endTime?: ClockTime
+  note?: string
+  createdAt: ISODateTime
+}
+
+/** Someone asked to join the team by email, who hasn't yet. */
+export interface Invitation {
+  id: ID
+  email: string
+  role: StaffRole
+  createdAt: ISODateTime
+  createdBy: ID
+}
+
+export type NotificationKind = 'tasks' | 'temperatures' | 'signoff'
+export type NotificationPreferences = Partial<Record<NotificationKind, boolean>>
 
 /* -------------------------------------------------------------------------- */
 /* Task templates — ready-made sets of tasks to add to someone's list          */
@@ -472,6 +583,9 @@ export interface VenueSettings {
    * isn't marked down for this morning or last week. Absent means no cut-off.
    */
   recordsStartAt?: ISODateTime
+  /** When the venue's probes were last checked for accuracy. */
+  probeCalibratedAt?: ISODateTime
+  probeCalibratedBy?: ID
 }
 
 /* -------------------------------------------------------------------------- */
@@ -490,6 +604,10 @@ export interface AppData {
   issues: FoodSafetyIssue[]
   stock: StockItem[]
   tasks: Task[]
+  taskSections: TaskSection[]
   taskTemplates: TaskTemplate[]
+  shifts: Shift[]
+  unavailability: Unavailability[]
+  invitations: Invitation[]
   settings: VenueSettings
 }

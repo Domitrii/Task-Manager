@@ -17,6 +17,7 @@ import { Button, ButtonLink } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Tabs } from '@/components/ui/Tabs'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { useGoBack } from '@/lib/useGoBack'
 import { StatCard } from '@/components/shared/StatCard'
 import { ViewChips } from '@/components/shared/ViewChips'
 import { isOwnReading, useReadingAccess } from './access'
@@ -53,6 +54,7 @@ export function TemperatureSection({
 }) {
   const now = useNow()
   const { data } = useStore()
+  const goBack = useGoBack('/temperatures')
   const quickEntry = useQuickEntry()
   const access = useReadingAccess()
   const [tab, setTab] = useState<TabKey>('today')
@@ -89,6 +91,7 @@ export function TemperatureSection({
   return (
     <div className="space-y-5">
       <PageHeader
+        onBack={goBack}
         title={title}
         description={description}
         actions={

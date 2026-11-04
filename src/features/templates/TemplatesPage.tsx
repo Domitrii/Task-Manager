@@ -240,7 +240,7 @@ function TemplatePreview({
       description={[template.group, template.schedule].filter(Boolean).join(' · ')}
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>
+          <Button onClick={onClose}>
             Close
           </Button>
           {added ? (

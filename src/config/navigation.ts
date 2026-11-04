@@ -1,11 +1,13 @@
 import {
-  CalendarCheck,
+  Calendar,
   CalendarRange,
+  ChartNoAxesColumn,
   ClipboardCheck,
   ClipboardList,
+  FileText,
   Flame,
+  House,
   LayoutTemplate,
-  ListChecks,
   type LucideIcon,
   Package,
   QrCode,
@@ -15,8 +17,8 @@ import {
   Snowflake,
   Soup,
   Thermometer,
-  TrendingUp,
   Truck,
+  Users,
 } from 'lucide-react'
 
 /** Which live counter, if any, is shown against a nav item. */
@@ -36,20 +38,26 @@ export interface NavItem {
  * either side of the Log button.
  */
 export const PRIMARY_NAV: NavItem[] = [
-  { label: 'Today', to: '/', icon: CalendarCheck, end: true, badge: 'today' },
-  { label: 'Tasks', to: '/tasks', icon: ListChecks, badge: 'openTasks' },
-  { label: 'Reports', to: '/reports', icon: TrendingUp },
+  { label: 'Home', to: '/', icon: House, end: true, badge: 'today' },
+  { label: 'Checklist', to: '/tasks', icon: FileText, badge: 'openTasks' },
+  { label: 'Reports', to: '/reports', icon: ChartNoAxesColumn },
 ]
+
+/** Someone's shifts. On phones it's the calendar in the top band. */
+export const CALENDAR_NAV: NavItem = { label: 'Calendar', to: '/calendar', icon: Calendar }
 
 /** Where the records live — history, current status and the full lists. */
 export const RECORD_NAV: NavItem[] = [
-  { label: 'Temperatures', to: '/temperatures', icon: Thermometer },
-  { label: 'Checklists', to: '/checklists', icon: ClipboardCheck },
+  { label: 'Temps', to: '/temperatures', icon: Thermometer },
+  { label: 'Food probe', to: '/food-probe', icon: Flame },
   { label: 'Deliveries', to: '/deliveries', icon: Package, badge: 'ordersToCheckIn' },
   { label: 'Suppliers', to: '/suppliers', icon: Truck },
   { label: 'Issues', to: '/food-safety', icon: ShieldAlert, badge: 'openIssues' },
   { label: 'Stock', to: '/stock', icon: ClipboardList },
+  { label: 'Sign-off checklists', to: '/checklists', icon: ClipboardCheck },
 ]
+
+export const TEAM_NAV: NavItem = { label: 'Team', to: '/team', icon: Users }
 
 export const SETTINGS_NAV: NavItem = { label: 'Settings', to: '/settings', icon: Settings }
 
@@ -64,7 +72,7 @@ export const QR_LABELS_NAV: NavItem = { label: 'QR labels', to: '/temperatures/l
 
 /** Views inside Temperatures, shown as chips on the page rather than in the sidebar. */
 export const TEMPERATURE_VIEWS: NavItem[] = [
-  { label: 'All', to: '/temperatures', icon: Thermometer, end: true },
+  { label: 'All', to: '/temperatures/records', icon: Thermometer, end: true },
   { label: 'Fridges', to: '/temperatures/fridges', icon: Refrigerator },
   { label: 'Freezers', to: '/temperatures/freezers', icon: Snowflake },
   { label: 'Hot holding', to: '/temperatures/hot-holding', icon: Soup },
@@ -81,7 +89,9 @@ export const CHECKLIST_VIEWS: NavItem[] = [
 /** Every destination, for the command palette and the page title. */
 export const ALL_NAV_ITEMS: NavItem[] = [
   ...PRIMARY_NAV,
+  CALENDAR_NAV,
   ...RECORD_NAV,
+  TEAM_NAV,
   TEMPLATES_NAV,
   SETTINGS_NAV,
   QR_LABELS_NAV,
