@@ -427,6 +427,12 @@ export interface TaskSection {
 /** Clock times in 24h "HH:mm". A shift ending earlier than it starts runs past midnight. */
 export type ClockTime = string
 
+/** Time off during a shift. Not counted as time worked. Still going while it has no end. */
+export interface ShiftBreak {
+  startedAt: ISODateTime
+  endedAt?: ISODateTime
+}
+
 export interface Shift {
   id: ID
   staffId: ID
@@ -439,6 +445,7 @@ export interface Shift {
   details?: string
   clockedInAt?: ISODateTime
   clockedOutAt?: ISODateTime
+  breaks?: ShiftBreak[]
   createdBy?: ID
 }
 

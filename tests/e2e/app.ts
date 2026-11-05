@@ -5,6 +5,14 @@ export const DEVICE_URL = 'http://localhost:5199'
 /** The copy with Supabase keys, for the sign-in and team screens. */
 export const ACCOUNTS_URL = 'http://localhost:5198'
 
+/** A time today, for `page.clock`: the demo's first person works 08:00–16:00 every day. */
+export function todayAt(time: string): Date {
+  const [hours, minutes] = time.split(':').map(Number)
+  const date = new Date()
+  date.setHours(hours, minutes, 0, 0)
+  return date
+}
+
 /** Opens the sample restaurant, as someone looking around for the first time would. */
 export async function openDemo(page: Page) {
   await page.goto(`${DEVICE_URL}/`)

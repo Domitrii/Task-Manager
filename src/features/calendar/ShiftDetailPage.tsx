@@ -1,6 +1,6 @@
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { Trash2 } from 'lucide-react'
-import { shiftState } from '@/data/shifts'
+import { currentShift, shiftState } from '@/data/shifts'
 import { useStore } from '@/data/store'
 import { toISODate } from '@/lib/compliance'
 import { useNow } from '@/lib/useNow'
@@ -23,12 +23,12 @@ export function ShiftDetailPage() {
   if (!shift) return <Navigate to="/calendar" replace />
 
   const today = toISODate(now)
-  const mine = shift.staffId === activeStaffId
-  // Clocking is for someone's own shift, today, or one they're still on.
-  const clockable = mine && (shift.date === today || shiftState(shift) === 'clocked-in')
+  // Clocking is only ever for the one shift someone's on or up next for.
+  const clockable = currentShift(data, activeStaffId, now)?.id === shift.id
+  const timedBelow = clockable && shiftState(shift) === 'clocked-in'
 
   return (
-    <div className="space-y-3.5 pb-16 lg:pb-0">
+    <div className="space-y-3.5 pb-24 lg:pb-0">
       <PageHeader title="Shift detail" onBack={() => navigate('/calendar')} />
 
       <p className="text-ink-muted text-[13px]">
@@ -36,7 +36,7 @@ export function ShiftDetailPage() {
         {longDate(shift.date)}
       </p>
 
-      <ClockStatusCard shift={shift} now={now} />
+      {timedBelow ? null : <ClockStatusCard shift={shift} now={now} />}
       <ShiftCard shift={shift} plain />
 
       <Card as="section" className="p-4">
@@ -60,7 +60,7 @@ export function ShiftDetailPage() {
         </Button>
       ) : null}
 
-      {clockable ? <ClockBar shift={shift} now={now} /> : null}
+      {clockable ? <ClockBar shift={shift} /> : null}
     </div>
   )
 }

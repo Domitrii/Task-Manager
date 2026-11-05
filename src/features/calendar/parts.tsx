@@ -1,13 +1,26 @@
 /** The pieces the Calendar and a shift's own page share. */
-import { useState, type ReactNode } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { format, parseISO } from 'date-fns'
-import { Check, ChevronRight, Clock, Trash2, Users } from 'lucide-react'
+import { differenceInMinutes, format, parseISO } from 'date-fns'
+import { Check, ChevronRight, Clock, Coffee, Trash2, Users } from 'lucide-react'
 import { staffName } from '@/data/selectors'
-import { formatDuration, minutesBetween, shiftHours, shiftState, unavailabilityHours } from '@/data/shifts'
+import {
+  breakMs,
+  canClockIn,
+  currentBreak,
+  formatDuration,
+  formatTimer,
+  onBreak,
+  shiftHours,
+  shiftState,
+  shiftWindow,
+  unavailabilityHours,
+  workedMs,
+} from '@/data/shifts'
 import { useStore } from '@/data/store'
 import type { Shift, Unavailability } from '@/data/types'
 import { formatTime } from '@/lib/format'
+import { useNow } from '@/lib/useNow'
 import { Badge } from '@/components/ui/Badge'
 import { Button, IconButton } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
@@ -25,12 +38,15 @@ export function useClockOffline(): { offline: boolean; lastSynced: string | null
   return { offline: true, lastSynced: sync.status.lastSyncedAt ? formatTime(sync.status.lastSyncedAt) : null }
 }
 
-/** A clocked-in shift's running time, or a finished shift's total. */
+const msToMinutes = (ms: number) => ms / 60_000
+
+/** A shift's time worked so far, or its total once finished. Breaks don't count. */
 export function ClockStatusCard({ shift, now }: { shift: Shift; now: Date }) {
   const { data } = useStore()
   const state = shiftState(shift)
   if (state === 'scheduled' || !shift.clockedInAt) return null
   const finished = state === 'complete' && shift.clockedOutAt
+  const breaks = breakMs(shift, now)
 
   return (
     <Card as="div" className="p-4">
@@ -39,15 +55,16 @@ export function ClockStatusCard({ shift, now }: { shift: Shift; now: Date }) {
           Shift completed
         </Badge>
       ) : (
-        <Badge icon={<Clock className="size-3" />}>Clocked in</Badge>
+        <Badge icon={<Clock className="size-3" />}>{onBreak(shift) ? 'On break' : 'Clocked in'}</Badge>
       )}
       <p className="font-display text-ink mt-2 text-[28px] leading-tight font-bold">
-        {formatDuration(minutesBetween(shift.clockedInAt, finished ? (shift.clockedOutAt as string) : now))}
+        {formatDuration(msToMinutes(workedMs(shift, now)))}
       </p>
       <p className="text-ink-muted mt-0.5 text-[13px]">
         {finished
-          ? `Recorded ${formatTime(shift.clockedInAt)}–${formatTime(shift.clockedOutAt as string)} · Total duration`
-          : `Started ${formatTime(shift.clockedInAt)} · Elapsed at ${format(now, 'HH:mm')}`}
+          ? `Recorded ${formatTime(shift.clockedInAt)}–${formatTime(shift.clockedOutAt as string)} · Total worked`
+          : `Started ${formatTime(shift.clockedInAt)} · Worked by ${format(now, 'HH:mm')}`}
+        {breaks > 0 ? ` · Break ${formatDuration(msToMinutes(breaks))}` : ''}
       </p>
       <p className="text-ink-subtle text-xs">
         {staffName(data, shift.staffId)} · {longDate(shift.date)}
@@ -113,58 +130,128 @@ export function UnavailabilityCard({ entry }: { entry: Unavailability }) {
   )
 }
 
-/** The action at the foot of the page: clocking in or out of a shift, or why you can't. */
-export function ClockBar({
-  shift,
-  now,
-  onClockedOut,
-}: {
-  shift: Shift | undefined
-  now: Date
-  onClockedOut?: () => void
-}) {
+/**
+ * The foot of the page: Clock in, or once clocked in, the running timer with
+ * Break and End shift. Ticks every second on its own, so the page doesn't have to.
+ */
+export function ClockBar({ shift, onClockedOut }: { shift: Shift | undefined; onClockedOut?: () => void }) {
+  const now = useNow(1_000)
   const { offline } = useClockOffline()
   const [confirming, setConfirming] = useState(false)
   const state = shift ? shiftState(shift) : null
 
-  const bar = (children: ReactNode) => <PinnedAction>{children}</PinnedAction>
-
-  if (state === 'complete') {
-    return bar(<p className="text-ink-muted text-[13px]">Today’s shift is complete. No further shift today.</p>)
-  }
   if (!shift) {
-    return bar(
-      <>
+    return (
+      <PinnedAction>
         <p className="text-ink-muted text-[13px]">No shift today</p>
         <Button block size="lg" disabled>
           Clock in
         </Button>
-      </>,
+      </PinnedAction>
     )
   }
-  const clockingOut = state === 'clocked-in'
-  if (offline) {
-    return bar(
+  if (state === 'complete') {
+    return (
+      <PinnedAction>
+        <p className="text-ink-muted text-[13px]">
+          Shift complete, {formatDuration(msToMinutes(workedMs(shift, now)))} worked. No further shift today.
+        </p>
+      </PinnedAction>
+    )
+  }
+
+  const sheet = confirming ? (
+    <ClockSheet shift={shift} now={now} onClose={() => setConfirming(false)} onClockedOut={onClockedOut} />
+  ) : null
+
+  if (state === 'clocked-in') {
+    return (
       <>
-        <p className="text-ink-muted text-[13px]">Clock in and clock out are unavailable until you reconnect.</p>
-        <Button block size="lg" disabled>
-          {clockingOut ? 'Clock out' : 'Clock in'}
-        </Button>
-      </>,
+        <ShiftTimer shift={shift} now={now} offline={offline} onEnd={() => setConfirming(true)} />
+        {sheet}
+      </>
     )
   }
+
+  const allowed = canClockIn(shift, now)
   return (
     <>
-      {bar(
-        <Button block size="lg" variant="primary" onClick={() => setConfirming(true)}>
-          {clockingOut ? 'Clock out' : 'Clock in'}
-        </Button>,
-      )}
-      {confirming ? (
-        <ClockSheet shift={shift} now={now} onClose={() => setConfirming(false)} onClockedOut={onClockedOut} />
-      ) : null}
+      <PinnedAction>
+        {offline ? (
+          <p className="text-ink-muted text-[13px]">Clock in and clock out are unavailable until you reconnect.</p>
+        ) : !allowed ? (
+          <p className="text-ink-muted text-[13px]">You can clock in from {shift.startTime}, when your shift starts.</p>
+        ) : null}
+        <Button
+          block
+          size="lg"
+          variant={allowed && !offline ? 'primary' : 'secondary'}
+          disabled={!allowed || offline}
+          onClick={() => setConfirming(true)}
+        >
+          Clock in
+        </Button>
+      </PinnedAction>
+      {sheet}
     </>
   )
+}
+
+/** Where Clock in was: how long they've been working, or how long they've been on break. */
+function ShiftTimer({
+  shift,
+  now,
+  offline,
+  onEnd,
+}: {
+  shift: Shift
+  now: Date
+  offline: boolean
+  onEnd: () => void
+}) {
+  const { startBreak, endBreak } = useStore()
+  const running = currentBreak(shift)
+  const worked = formatTimer(workedMs(shift, now))
+
+  return (
+    <PinnedAction>
+      <div className="sm:flex sm:items-center sm:gap-6">
+        <div className="flex min-w-0 flex-1 items-center justify-between gap-3 sm:justify-start sm:gap-5">
+          <p className="min-w-0">
+            <span className="text-ink flex items-center gap-1.5 text-sm font-semibold">
+              {running ? <Coffee className="size-4 shrink-0" /> : <Clock className="size-4 shrink-0" />}
+              {running ? 'On break' : 'Clocked in'}
+            </span>
+            <span className="text-ink-muted block truncate text-xs">
+              {running ? `Worked ${worked}` : `Since ${formatTime(shift.clockedInAt as string)}, ends ${shift.endTime}`}
+            </span>
+          </p>
+          <p role="timer" className="text-ink shrink-0 text-[30px] leading-none font-bold tabular-nums">
+            {running ? formatTimer(now.getTime() - Date.parse(running.startedAt)) : worked}
+          </p>
+        </div>
+        <div className="mt-2 grid grid-cols-2 gap-2 sm:mt-0 sm:w-80 sm:shrink-0">
+          <Button
+            size="lg"
+            disabled={offline}
+            onClick={() => (running ? endBreak(shift.id) : startBreak(shift.id))}
+          >
+            {running ? 'End break' : 'Break'}
+          </Button>
+          <Button size="lg" variant="primary" disabled={offline} onClick={onEnd}>
+            End shift
+          </Button>
+        </div>
+      </div>
+      {offline ? <p className="text-ink-muted text-[13px]">Break and End shift are unavailable until you reconnect.</p> : null}
+    </PinnedAction>
+  )
+}
+
+/** How far from the plan: "0h 40 before the scheduled end". Nothing when spot on. */
+function offSchedule(minutes: number, what: string): string | null {
+  if (minutes === 0) return null
+  return `${formatDuration(Math.abs(minutes))} ${minutes < 0 ? 'before' : 'after'} the scheduled ${what}`
 }
 
 function ClockSheet({
@@ -181,13 +268,18 @@ function ClockSheet({
   const { data, clockIn, clockOut } = useStore()
   const out = shiftState(shift) === 'clocked-in'
   const time = format(now, 'HH:mm')
+  const window = shiftWindow(shift)
+  // To the nearest minute: the seconds on the clock shouldn't turn 6h 00 into 5h 59.
+  const minutesFrom = (time: Date) => differenceInMinutes(now, time, { roundingMethod: 'round' })
+  const drift = out ? offSchedule(minutesFrom(window.end), 'end') : offSchedule(minutesFrom(window.start), 'start')
+  const breaks = breakMs(shift, now)
 
   return (
     <Modal
       open
       onClose={onClose}
       size="sm"
-      title={out ? 'Clock out?' : 'Clock in?'}
+      title={out ? 'End shift?' : 'Clock in?'}
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
@@ -203,7 +295,7 @@ function ClockSheet({
               onClose()
             }}
           >
-            {out ? 'Clock out' : 'Clock in'}
+            {out ? 'End shift' : 'Clock in'}
           </Button>
         </>
       }
@@ -216,15 +308,16 @@ function ClockSheet({
       <div className="border-line mt-3 rounded-xl border p-3.5">
         <p className="text-ink-muted text-[13px]">Scheduled shift {shiftHours(shift)}</p>
         <p className="text-ink mt-1 text-sm font-semibold">
-          {out ? 'Clock-out' : 'Clock-in'} time · {time}
+          {out ? 'End' : 'Clock-in'} time · {time}
         </p>
+        {drift ? <p className="text-ink-muted mt-1 text-xs">{drift}</p> : null}
         {out && shift.clockedInAt ? (
           <p className="text-ink-muted mt-1 text-xs">
-            Started {formatTime(shift.clockedInAt)} · Total duration {formatDuration(minutesBetween(shift.clockedInAt, now))}
+            Started {formatTime(shift.clockedInAt)} · Worked {formatDuration(msToMinutes(workedMs(shift, now)))}
+            {breaks > 0 ? ` · Break ${formatDuration(msToMinutes(breaks))}` : ''}
           </p>
         ) : null}
       </div>
     </Modal>
   )
 }
-

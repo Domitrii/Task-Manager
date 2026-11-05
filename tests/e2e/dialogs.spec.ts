@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { openDemo, openTab, visit } from './app.ts'
+import { openDemo, openTab, todayAt, visit } from './app.ts'
 import { expectToFitScreen, watchForErrors } from './layout.ts'
 
 /** The first one of these on screen: tables and their phone lists both exist, one hidden. */
@@ -247,12 +247,14 @@ const DIALOGS: Array<{ name: string; open: (page: Page) => Promise<void>; phones
     name: 'add unavailability',
     open: async (page) => {
       await visit(page, '/calendar')
+      await visible(page, /^Calendar$/).click()
       await visible(page, 'Add unavailability').click()
     },
   },
   {
     name: 'clock in',
     open: async (page) => {
+      await page.clock.install({ time: todayAt('12:00') })
       await visit(page, '/calendar')
       await visible(page, 'Clock in').click()
     },

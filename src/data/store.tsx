@@ -21,6 +21,7 @@ import { deriveDeliveryStatus, evaluateTemperature, periodForTime } from '@/lib/
 import { createId, initialsOf } from '@/lib/utils'
 import { applyChanges, EMPTY_DATA, type RecordChange } from './records'
 import type { DataRepository } from './repository'
+import { canClockIn, closeBreaks, onBreak, shiftState } from './shifts'
 import { colorForNewcomer, staffColors } from './staffColors'
 import { staffRoleFromText } from './staffRoles'
 import { nextOccurrence } from './tasks'
@@ -309,7 +310,11 @@ interface StoreValue {
   reorderTaskSections: (order: ID[]) => void
   saveShift: (shift: Shift) => void
   deleteShift: (id: ID) => void
+  /** Does nothing before the shift's start time: nobody can start early. */
   clockIn: (id: ID) => void
+  startBreak: (id: ID) => void
+  endBreak: (id: ID) => void
+  /** Ends the shift whenever they like, closing any break still running. */
   clockOut: (id: ID) => void
   saveUnavailability: (entry: Omit<Unavailability, 'id' | 'createdAt'>) => void
   deleteUnavailability: (id: ID) => void
@@ -773,12 +778,33 @@ export function StoreProvider({
 
       clockIn(id) {
         const shift = data.shifts.find((entry) => entry.id === id)
-        if (shift) dispatch({ type: 'shift/save', shift: { ...shift, clockedInAt: new Date().toISOString() } })
+        const now = new Date()
+        if (shift && canClockIn(shift, now)) {
+          dispatch({ type: 'shift/save', shift: { ...shift, clockedInAt: now.toISOString() } })
+        }
+      },
+
+      startBreak(id) {
+        const shift = data.shifts.find((entry) => entry.id === id)
+        if (!shift || shiftState(shift) !== 'clocked-in' || onBreak(shift)) return
+        const started = { startedAt: new Date().toISOString() }
+        dispatch({ type: 'shift/save', shift: { ...shift, breaks: [...(shift.breaks ?? []), started] } })
+      },
+
+      endBreak(id) {
+        const shift = data.shifts.find((entry) => entry.id === id)
+        if (shift) dispatch({ type: 'shift/save', shift: { ...shift, breaks: closeBreaks(shift, new Date()) } })
       },
 
       clockOut(id) {
         const shift = data.shifts.find((entry) => entry.id === id)
-        if (shift) dispatch({ type: 'shift/save', shift: { ...shift, clockedOutAt: new Date().toISOString() } })
+        const now = new Date()
+        if (shift && shiftState(shift) === 'clocked-in') {
+          dispatch({
+            type: 'shift/save',
+            shift: { ...shift, breaks: closeBreaks(shift, now), clockedOutAt: now.toISOString() },
+          })
+        }
       },
 
       saveUnavailability(entry) {

@@ -245,6 +245,26 @@ Shifts, unavailability and invitations are ordinary lists on `AppData`, so they 
 same `records` table with no migration. There's no server to send email, so **Send invitation**
 opens the inviter's own mail app with the join code.
 
+### Shifts and clocking
+
+Managers get a **Schedule** tab on the Calendar: the whole team's week as a time grid. Clicking a
+time opens the shift form at that hour (eight hours long to begin with), and dragging picks the
+hours. With a mouse, a shift can be dragged to another time or day and stretched by its bottom edge;
+on a touch screen those same movements scroll the week, so tapping a shift opens the form instead.
+A day with more people overlapping takes more width, and when a day is too narrow to read across,
+names run down each strip. Anyone marked unavailable shows at the top of the day. Once someone has
+clocked in, their shift's times are a record: it can't be moved, and opens on its own page instead.
+
+Everyone clocks in from the bar at the foot of the Calendar. **Clock in** only works from the
+shift's start time; there's no limit on how late, so someone can still start after a shift should
+have ended. Once clocked in, the bar shows a running timer with **Break** and **End shift**. The
+timer counts time worked: during a break it shows the time on break instead, and breaks aren't
+counted in the total. **End shift** works at any time, and the confirmation says how far off the
+schedule that is.
+
+The rules are checked on the device, in the store as well as on the buttons, against the device's
+own clock. The server doesn't check them, because it doesn't know the venue's time zone.
+
 ### Supplier orders
 
 **Orders** (`/suppliers/orders`) is where deliveries are planned. **New order** asks for the supplier,

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { openDemo, visit } from './app.ts'
+import { openDemo, todayAt, visit } from './app.ts'
 
 /** The first one of these on screen. */
 const button = (page: Page, name: string | RegExp) =>
@@ -21,17 +21,19 @@ test.describe('with the demo venue', () => {
     await openDemo(page)
   })
 
-  test('clocking in and out of today’s shift', async ({ page }) => {
+  test('clocking in and ending today’s shift', async ({ page }) => {
+    await page.clock.install({ time: todayAt('12:00') })
     await visit(page, '/calendar')
     await button(page, 'Clock in').click()
     await page.getByRole('dialog').getByRole('button', { name: 'Clock in' }).click()
     await expect(page.getByText('Clocked in', { exact: true })).toBeVisible()
 
-    await button(page, 'Clock out').click()
-    await page.getByRole('dialog').getByRole('button', { name: 'Clock out' }).click()
-    await expect(page.getByText('Clocked out')).toBeVisible()
+    await button(page, 'End shift').click()
+    await page.getByRole('dialog').getByRole('button', { name: 'End shift' }).click()
+    await expect(page.getByText('Shift ended')).toBeVisible()
+    await expect(page.getByText(/No further shift today/)).toBeVisible()
+    await button(page, 'Calendar').click()
     await expect(page.getByText('Shift completed')).toBeVisible()
-    await expect(page.getByText('No further shift today')).toBeVisible()
 
     await visit(page, '/team')
     await expect(page.getByText(/0 clocked in/)).toBeVisible()
@@ -39,6 +41,7 @@ test.describe('with the demo venue', () => {
 
   test('unavailability can’t end before it starts, and shows on the week once saved', async ({ page }) => {
     await visit(page, '/calendar')
+    await button(page, 'Calendar').click()
     await button(page, 'Add unavailability').click()
     const dialog = page.getByRole('dialog')
     await dialog.getByLabel('End date').fill('2020-01-01')

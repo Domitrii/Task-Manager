@@ -1,17 +1,18 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { addWeeks, format, parseISO, startOfWeek } from 'date-fns'
-import { CalendarOff, CalendarX, ChevronLeft, ChevronRight, Plus, Users } from 'lucide-react'
+import { CalendarOff, CalendarX, ChevronLeft, ChevronRight, Users } from 'lucide-react'
 import {
   currentShift,
   shiftsFor,
   shiftsOn,
-  shiftState,
+  shiftWindow,
   unavailabilityOn,
   weekDays,
   weekLabel,
 } from '@/data/shifts'
 import { useStore } from '@/data/store'
+import type { ID, Shift } from '@/data/types'
 import { toISODate } from '@/lib/compliance'
 import { useNow } from '@/lib/useNow'
 import { cn } from '@/lib/utils'
@@ -21,34 +22,48 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { ChipTabs } from '@/components/ui/Tabs'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { useIsManager } from '@/features/temperatures/access'
-import { AddShiftModal } from './AddShiftModal'
 import { AddUnavailabilityModal } from './AddUnavailabilityModal'
 import { ClockBar, ClockStatusCard, longDate, ShiftCard, UnavailabilityCard, useClockOffline } from './parts'
+import { ShiftFormModal, type ShiftDraft } from './ShiftFormModal'
+import { WeekSchedule } from './WeekSchedule'
 
-type Tab = 'calendar' | 'list'
+type Tab = 'schedule' | 'calendar' | 'list'
 type Notice = 'unavailability' | 'clocked-out'
+type Dialog = { type: 'unavailability' } | { type: 'shift'; shift?: Shift; draft: ShiftDraft }
 
 const NOTICES: Record<Notice, string> = {
   unavailability: 'Unavailability saved',
-  'clocked-out': 'Clocked out',
+  'clocked-out': 'Shift ended',
 }
 
-/** Someone's own week: when they're on, clocking in and out, and when they can't work. */
+const OWN_TABS = [
+  { value: 'calendar', label: 'Calendar' },
+  { value: 'list', label: 'List' },
+] as const
+
+/**
+ * Someone's own week: when they're on, clocking in and out, and when they
+ * can't work. Managers also get the whole team's week, to lay out shifts on.
+ */
 export function CalendarPage() {
   const now = useNow()
   const navigate = useNavigate()
   const { data, activeStaffId } = useStore()
   const manager = useIsManager()
   const { offline, lastSynced } = useClockOffline()
-  const [tab, setTab] = useState<Tab>('calendar')
+  const [tab, setTab] = useState<Tab>(manager ? 'schedule' : 'calendar')
+  // Someone who stops being a manager mid-session falls back to their own week.
+  const view = tab === 'schedule' && !manager ? 'calendar' : tab
   const today = toISODate(now)
   const [monday, setMonday] = useState(() => startOfWeek(now, { weekStartsOn: 1 }))
   const [selected, setSelected] = useState(today)
   const [notice, setNotice] = useState<Notice | null>(null)
-  const [dialog, setDialog] = useState<'unavailability' | 'shift' | null>(null)
+  const [dialog, setDialog] = useState<Dialog | null>(null)
+  // Rotas get filled in one person at a time, so the form remembers who was last.
+  const [lastPerson, setLastPerson] = useState<ID | null>(null)
 
   const shift = useMemo(() => currentShift(data, activeStaffId, now), [data, activeStaffId, now])
-  const state = shift ? shiftState(shift) : null
+  const beforeShift = shift !== undefined && !shift.clockedInAt && now < shiftWindow(shift).start
 
   const upcoming = useMemo(() => {
     const shifts = shiftsFor(data, activeStaffId).filter((entry) => entry.date >= today)
@@ -63,14 +78,15 @@ export function CalendarPage() {
   const dayAway = unavailabilityOn(data, activeStaffId, selected)
   const anyAway = days.some((day) => unavailabilityOn(data, activeStaffId, toISODate(day)))
 
+  const startDate = selected < today ? today : selected
   const addButton = (
-    <Button block onClick={() => setDialog('unavailability')}>
+    <Button block onClick={() => setDialog({ type: 'unavailability' })}>
       Add unavailability
     </Button>
   )
 
   return (
-    <div className="space-y-3.5 pb-16 lg:pb-0">
+    <div className="space-y-3.5 pb-24 lg:pb-0">
       <PageHeader title="Calendar" onBack={() => navigate('/')} />
 
       {notice ? <Banner tone="pass" title={NOTICES[notice]} /> : null}
@@ -83,22 +99,36 @@ export function CalendarPage() {
       <ChipTabs
         stretch
         label="Calendar view"
-        value={tab}
+        value={view}
         onChange={setTab}
-        options={[
-          { value: 'calendar', label: 'Calendar' },
-          { value: 'list', label: 'List' },
-        ]}
+        className={manager ? 'grid-cols-3' : undefined}
+        options={manager ? [{ value: 'schedule', label: 'Schedule' }, ...OWN_TABS] : [...OWN_TABS]}
       />
 
-      <p className="text-ink-muted text-[13px]">
-        Today · {longDate(today)}
-        {state === 'scheduled' && shift?.date === today ? ` · Before shift, ${format(now, 'HH:mm')}` : ''}
-      </p>
+      {/* The grid marks today and the time for itself. */}
+      {view === 'schedule' ? null : (
+        <p className="text-ink-muted text-[13px]">
+          Today · {longDate(today)}
+          {beforeShift ? ` · Before shift, ${format(now, 'HH:mm')}` : ''}
+        </p>
+      )}
 
-      {shift ? <ClockStatusCard shift={shift} now={now} /> : null}
+      {/* While someone's clocked in, the timer is in the bar at the foot of the page. */}
+      {shift?.clockedOutAt && view !== 'schedule' ? <ClockStatusCard shift={shift} now={now} /> : null}
 
-      {nothing ? (
+      {view === 'schedule' ? (
+        <WeekSchedule
+          monday={monday}
+          now={now}
+          onWeekChange={setMonday}
+          onAdd={() => setDialog({ type: 'shift', draft: { date: startDate, startTime: '08:00', endTime: '16:00' } })}
+          onDraft={(draft) => setDialog({ type: 'shift', draft })}
+          onOpen={(entry) => {
+            if (entry.clockedInAt) navigate(`/calendar/shift/${entry.id}`)
+            else setDialog({ type: 'shift', shift: entry, draft: entry })
+          }}
+        />
+      ) : nothing ? (
         <>
           <EmptyState
             icon={<CalendarX className="size-5" />}
@@ -111,7 +141,7 @@ export function CalendarPage() {
       ) : (
         <>
           {addButton}
-          {tab === 'calendar' ? (
+          {view === 'calendar' ? (
             <>
               <div className="flex items-center justify-between gap-2">
                 <h2 className="font-display text-ink text-lg font-bold">{weekLabel(monday)}</h2>
@@ -206,24 +236,23 @@ export function CalendarPage() {
         </>
       )}
 
-      {manager ? (
-        <Button variant="ghost" size="sm" onClick={() => setDialog('shift')} className="gap-1.5">
-          <Plus className="size-4" />
-          Add shift
-        </Button>
-      ) : null}
+      <ClockBar shift={shift} onClockedOut={() => setNotice('clocked-out')} />
 
-      <ClockBar shift={shift} now={now} onClockedOut={() => setNotice('clocked-out')} />
-
-      {dialog === 'unavailability' ? (
+      {dialog?.type === 'unavailability' ? (
         <AddUnavailabilityModal
-          date={selected < today ? today : selected}
+          date={startDate}
           onClose={() => setDialog(null)}
           onSaved={() => setNotice('unavailability')}
         />
       ) : null}
-      {dialog === 'shift' ? (
-        <AddShiftModal date={selected < today ? today : selected} onClose={() => setDialog(null)} />
+      {dialog?.type === 'shift' ? (
+        <ShiftFormModal
+          shift={dialog.shift}
+          draft={dialog.draft}
+          person={lastPerson}
+          onClose={() => setDialog(null)}
+          onSaved={setLastPerson}
+        />
       ) : null}
     </div>
   )
