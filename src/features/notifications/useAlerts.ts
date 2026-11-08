@@ -1,9 +1,10 @@
 import { useCallback, useMemo } from 'react'
-import { selectAlerts, type Alert } from '@/data/attention'
+import { reminderAlerts, selectAlerts, type Alert } from '@/data/attention'
 import { useStore } from '@/data/store'
 import { useSync } from '@/features/account/sync'
 import type { JoinRequest } from '@/features/account/team'
 import { useNow } from '@/lib/useNow'
+import { useIsManager } from '@/features/temperatures/access'
 
 /** People waiting to be let into the team, for whoever can let them in. */
 function joinAlerts(requests: JoinRequest[], now: Date): Alert[] {
@@ -26,11 +27,14 @@ export function useAlerts() {
   const now = useNow()
   const { data, activeStaff, saveStaff } = useStore()
   const joinRequests = useSync()?.joinRequests
+  const manager = useIsManager()
+  const staffId = activeStaff.id
 
-  const alerts = useMemo(
-    () => [...selectAlerts(data, now, activeStaff.notifications), ...joinAlerts(joinRequests ?? [], now)],
-    [data, now, activeStaff.notifications, joinRequests],
-  )
+  const alerts = useMemo(() => {
+    const viewer = { staffId, manager }
+    const others = [...selectAlerts(data, now, activeStaff.notifications, viewer), ...joinAlerts(joinRequests ?? [], now)]
+    return [...reminderAlerts(activeStaff.reminders, others, now), ...others]
+  }, [data, now, activeStaff.notifications, activeStaff.reminders, joinRequests, staffId, manager])
 
   const read = useMemo(() => new Set(activeStaff.readAlerts), [activeStaff.readAlerts])
   const unread = useMemo(() => alerts.filter((alert) => !read.has(alert.key)), [alerts, read])

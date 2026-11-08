@@ -1,13 +1,15 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronRight, CircleAlert, ClipboardList, FileText, SearchX, Thermometer, Truck, type LucideIcon } from 'lucide-react'
+import { AlarmClock, ChevronRight, CircleAlert, ClipboardList, FileText, SearchX, Thermometer, Truck, type LucideIcon } from 'lucide-react'
 import { ALERT_GROUPS, type Alert } from '@/data/attention'
+import { isFinished } from '@/data/reminders'
 import { useStore } from '@/data/store'
 import { useGoBack } from '@/lib/useGoBack'
 import { Badge } from '@/components/ui/Badge'
 import { Banner } from '@/components/ui/Banner'
 import { Button, ButtonLink } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { ListCard } from '@/components/shared/ListCard'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { SearchField } from '@/components/shared/SearchField'
 import { SortMenu, type SortOrder } from '@/components/shared/SortMenu'
@@ -18,13 +20,15 @@ const ICONS: Record<Alert['kind'], LucideIcon> = {
   temperatures: Thermometer,
   signoff: ClipboardList,
   always: Truck,
+  reminder: AlarmClock,
 }
 
 export function NotificationsPage() {
-  const { data } = useStore()
+  const { data, activeStaff } = useStore()
   const navigate = useNavigate()
   const goBack = useGoBack('/')
   const { alerts, unread, isRead, markRead, markAllRead } = useAlerts()
+  const reminderCount = (activeStaff.reminders ?? []).filter((reminder) => reminder.on && !isFinished(reminder, new Date())).length
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<SortOrder>('recent')
   const [justRead, setJustRead] = useState(false)
@@ -49,6 +53,12 @@ export function NotificationsPage() {
     <div className="space-y-3.5">
       <PageHeader title="Notifications" onBack={goBack} />
       <p className="text-ink-muted text-[13px]">{data.settings.venueName}</p>
+      <ListCard
+        to="/settings/notifications"
+        icon={AlarmClock}
+        title="Set a reminder"
+        subtitle={reminderCount > 0 ? `${reminderCount} set` : 'Choose a time to check everything'}
+      />
 
       {alerts.length === 0 ? (
         <EmptyState

@@ -57,7 +57,7 @@ export function Modal({
   return createPortal(
     <div
       className={cn(
-        'fixed inset-0 z-50 flex justify-center',
+        'fixed inset-0 z-(--layer-modal) flex justify-center',
         alert ? 'items-center p-4' : 'items-end sm:items-center sm:p-6',
       )}
     >

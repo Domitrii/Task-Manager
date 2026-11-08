@@ -34,7 +34,7 @@ export function BottomNav({ onOpenLog }: { onOpenLog: () => void }) {
   return (
     <nav
       aria-label="Main"
-      className="bg-app/95 border-line fixed inset-x-0 bottom-0 z-40 border-t pb-[env(safe-area-inset-bottom)] backdrop-blur-md lg:hidden"
+      className="bg-app/95 border-line fixed inset-x-0 bottom-0 z-(--layer-nav) border-t pb-[env(safe-area-inset-bottom)] backdrop-blur-md lg:hidden print:hidden"
     >
       <div className="mx-auto flex h-16 max-w-lg items-stretch px-2">
         <Tab item={home} active={within(UNDER_HOME)} />

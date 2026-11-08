@@ -28,7 +28,12 @@ export interface StaffMember {
   /** Shown in avatars when no photo is available. */
   initials: string
   active: boolean
-  /** Optional 4-digit sign-off PIN. Not security — it mirrors real venue practice. */
+  /**
+   * Their kitchen PIN, for taking over a shared device, as a slow salted hash
+   * (see `lib/pin.ts`). Never the PIN itself.
+   */
+  pinHash?: string
+  /** A PIN kept as typed, from before PINs were hashed. Hashed and dropped the first time a manager's device sees it. */
   pin?: string
   /** The account this person signs in with, when the team syncs. Absent for people without one. */
   userId?: string
@@ -42,6 +47,8 @@ export interface StaffMember {
   notifications?: NotificationPreferences
   /** Notifications they've read, so the bell only counts what's new to them. */
   readAlerts?: string[]
+  /** Times they've asked to be reminded to check everything. */
+  reminders?: Reminder[]
   /** The address on their account, when they have one. */
   email?: string
   certificates?: Certificate[]
@@ -208,6 +215,9 @@ export interface Delivery {
   lines: DeliveryLine[]
   deliveryNote?: string
   driverName?: string
+  /** Who entered it and when, which isn't always who checked it or when it came. Absent on older deliveries. */
+  enteredBy?: ID
+  enteredAt?: ISODateTime
   /** Was the delivery vehicle at the right temperature on arrival? */
   vehicleTempOk?: boolean
   notes?: string
@@ -304,6 +314,9 @@ export interface ChecklistRun {
   date: ISODate
   completedBy: ID
   completedAt: ISODateTime
+  /** Who entered it and when, which isn't always who did it. Absent on older runs. */
+  enteredBy?: ID
+  enteredAt?: ISODateTime
   results: ChecklistResult[]
   notes?: string
 }
@@ -445,8 +458,26 @@ export interface Shift {
   details?: string
   clockedInAt?: ISODateTime
   clockedOutAt?: ISODateTime
+  /** The manager who clocked them out, when it wasn't them. */
+  clockedOutBy?: ID
   breaks?: ShiftBreak[]
   createdBy?: ID
+  /** Every time a manager put the clocked times right, oldest first. */
+  timeCorrections?: ShiftTimeCorrection[]
+  /**
+   * Started by clocking in with no shift on the schedule. Its times are the
+   * clock's: it starts when they clocked in and ends when they clock out.
+   */
+  unscheduled?: boolean
+}
+
+/** A manager changing the times someone clocked, e.g. for a forgotten End shift. */
+export interface ShiftTimeCorrection {
+  at: ISODateTime
+  by: ID
+  reason: string
+  /** What the clock said before. */
+  before: { clockedInAt?: ISODateTime; clockedOutAt?: ISODateTime }
 }
 
 /** Time someone has said they can't work. */
@@ -474,6 +505,22 @@ export interface Invitation {
 
 export type NotificationKind = 'tasks' | 'temperatures' | 'signoff'
 export type NotificationPreferences = Partial<Record<NotificationKind, boolean>>
+
+/** A time someone wants a nudge to go through everything. Kept with them, so it follows them between devices. */
+export interface Reminder {
+  id: ID
+  /** `HH:mm`, by the clock of the device it goes off on. */
+  time: string
+  /** Days of the week it repeats on, where 0 is Sunday. Ignored when it has a `date`. */
+  days: number[]
+  /** The one day it goes off, for a reminder that doesn't repeat. */
+  date?: ISODate
+  /** What to look at. Left out, that's everything. */
+  note?: string
+  on: boolean
+  /** When it was last saved or switched on. Nothing before this counts as a time it went off. */
+  setAt: ISODateTime
+}
 
 /* -------------------------------------------------------------------------- */
 /* Task templates — ready-made sets of tasks to add to someone's list          */

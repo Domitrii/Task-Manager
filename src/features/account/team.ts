@@ -165,19 +165,26 @@ export async function setManager(client: SupabaseClient, team: TeamRef, userId: 
   if (error) throw error
 }
 
-/** What this account may do in its team. Throws when offline. */
+/** Takes someone out of the team: the owner can take anyone, a manager anyone who isn't one. */
+export async function removeTeamMember(client: SupabaseClient, team: TeamRef, userId: string): Promise<void> {
+  const { error } = await client.rpc('remove_team_member', { team: team.id, person: userId })
+  if (error) throw error
+}
+
+/** What this account may do in its team, or null once it's no longer in it. Throws when offline. */
 export async function fetchMyAccess(
   client: SupabaseClient,
   team: TeamRef,
   userId: string,
-): Promise<Omit<TeamDetails, 'code'>> {
+): Promise<Omit<TeamDetails, 'code'> | null> {
   const { data, error } = await client
     .from('team_members')
     .select('role, can_approve, is_manager')
     .eq('team_id', team.id)
     .eq('user_id', userId)
-    .single<{ role: TeamRole; can_approve: boolean; is_manager: boolean }>()
+    .maybeSingle<{ role: TeamRole; can_approve: boolean; is_manager: boolean }>()
   if (error) throw error
+  if (!data) return null
   const owner = data.role === 'owner'
   return { role: data.role, canApprove: owner || data.can_approve, isManager: owner || data.is_manager }
 }
@@ -188,6 +195,7 @@ export async function fetchTeamDetails(client: SupabaseClient, team: TeamRef, us
     fetchMyAccess(client, team, userId),
   ])
   if (teamResult.error) throw teamResult.error
+  if (!access) throw new Error('not_in_team')
   return { code: teamResult.data.join_code, ...access }
 }
 
@@ -229,6 +237,10 @@ export function teamErrorMessage(error: unknown): string {
       return 'They’re no longer in the team.'
     case 'not_signed_in':
       return 'You’ve been signed out. Sign in again to carry on.'
+    case 'cannot_remove':
+      return 'Only the owner can take a manager out of the team, and nobody can take out the owner.'
+    case 'not_yourself':
+      return 'To leave the team yourself, use Leave team.'
   }
   if (!navigator.onLine || /failed to fetch|networkerror|load failed|network request failed/i.test(message)) {
     return 'You’re offline. This needs a connection.'

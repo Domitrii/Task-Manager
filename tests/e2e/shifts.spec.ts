@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { addDays, format, startOfWeek } from 'date-fns'
 import { expect, test, type Page } from '@playwright/test'
 import { openDemo, todayAt, visit } from './app.ts'
@@ -85,7 +86,8 @@ test.describe('the clock', () => {
     await page.clock.fastForward('01:00:00')
 
     await button(page, /^Break$/).click()
-    await expect(page.getByText('On break')).toBeVisible()
+    // In the clock bar: a manager's "Clocked in now" panel says it too.
+    await expect(page.locator('[data-pinned-action]').getByText('On break')).toBeVisible()
     await expect(page.getByText(/^Worked 01:00:/)).toBeVisible()
     await page.clock.fastForward('10:00')
     await expect(timer(page)).toHaveText(/^00:10:/)
@@ -145,7 +147,7 @@ test('the timer fits at every width, working and on a break', async ({ page }) =
   await expect(timer(page)).toBeVisible()
   await expectToFitScreen(page)
   await button(page, /^Break$/).click()
-  await expect(page.getByText('On break')).toBeVisible()
+  await expect(page.locator('[data-pinned-action]').getByText('On break')).toBeVisible()
   await expectToFitScreen(page)
 })
 
@@ -282,5 +284,201 @@ test.describe('dragging on the schedule', () => {
     await day(page, 0).getByRole('button', { name: /^Tom Whitfield, 01:00–05:00/ }).click()
     await dialog.getByRole('button', { name: 'Remove shift' }).click()
     await expect(day(page, 0).getByRole('button', { name: /^Tom Whitfield, 01:00–05:00/ })).toHaveCount(0)
+  })
+})
+
+/** Device-only mode lets anyone on the staff list take over. Menu entries start with their initials. */
+async function switchTo(page: Page, person: string) {
+  await visit(page, '/')
+  await button(page, /Switch person/).click()
+  await page.getByRole('button', { name: new RegExp(`^[A-Z]{2} ${person}`) }).click()
+}
+
+/**
+ * Someone the demo has off today. It gives everyone four days a week, starting
+ * from a different day, in staff-list order (see `buildShifts` in `data/seed.ts`);
+ * the first person, Amara, is always on today.
+ */
+function offToday(): string {
+  const people = ['Amara Okafor', 'Tom Whitfield', 'Lena Ferreira', 'Marcus Bell', 'Priya Raman', 'Joe Adeyemi', 'Sofia Lindqvist']
+  const weekday = new Date().getDay()
+  return people.find((_, index) => index > 0 && (weekday + index) % 7 >= 4) as string
+}
+
+const clockedInNow = (page: Page) => page.getByRole('region', { name: 'Clocked in now' })
+
+test.describe('clocking in without a shift', () => {
+  test.skip(({ viewport }) => ![360, 1440].includes(viewport?.width ?? 0), 'Once on a phone and once on a desktop')
+
+  test('someone with no shift today clocks in, and it’s an extra shift', async ({ page }) => {
+    const person = offToday()
+    await page.clock.install({ time: todayAt('11:00') })
+    await switchTo(page, person)
+    await visit(page, '/calendar')
+    await expect(page.getByText(/No shift on the schedule today\. You can still clock in/)).toBeVisible()
+    await expect(clockedInNow(page)).toHaveCount(0)
+
+    await button(page, 'Clock in').click()
+    const sheet = page.getByRole('dialog')
+    await expect(sheet.getByText(person)).toBeVisible()
+    await expect(sheet.getByText('Extra shift, not on the schedule. A manager can see it.')).toBeVisible()
+    await sheet.getByRole('button', { name: 'Clock in' }).click()
+    await expect(timer(page)).toHaveText(/^00:00:/)
+    await expect(page.getByText('Since 11:00 · Extra shift')).toBeVisible()
+
+    await page.clock.fastForward('01:30:00')
+    await button(page, 'End shift').click()
+    await expect(page.getByRole('dialog').getByText('Extra shift, not on the schedule.', { exact: false })).toBeVisible()
+    await page.getByRole('dialog').getByRole('button', { name: 'End shift' }).click()
+    await expect(page.getByText(/Shift complete, 1h 30.* worked\. Back in\?/)).toBeVisible()
+
+    // Back later, they can clock in again.
+    await button(page, 'Clock in again').click()
+    await page.getByRole('dialog').getByRole('button', { name: 'Clock in' }).click()
+    await expect(timer(page)).toHaveText(/^00:00:/)
+
+    await visit(page, '/calendar/hours')
+    const row = page.getByRole('listitem').filter({ hasText: person })
+    await expect(row).toContainText('2 extra shifts')
+    // The demo plans four 8-hour shifts a week for everyone; the two extra ones add to the count, not to what was scheduled.
+    await expect(row).toContainText('6 shifts · 32h scheduled')
+  })
+
+  test('a manager sees who’s clocked in now, with extra shifts and anyone past their end', async ({ page }) => {
+    const person = offToday()
+    await page.clock.install({ time: todayAt('11:00') })
+    await switchTo(page, person)
+    await visit(page, '/calendar')
+    await button(page, 'Clock in').click()
+    await page.getByRole('dialog').getByRole('button', { name: 'Clock in' }).click()
+    await expect(timer(page)).toBeVisible()
+
+    await switchTo(page, 'Amara Okafor')
+    await visit(page, '/calendar')
+    const now = clockedInNow(page)
+    await expect(now).toContainText('1 person')
+    const extra = now.getByRole('link', { name: new RegExp(person) })
+    await expect(extra).toContainText('Since 11:00')
+    await expect(extra).toContainText('Extra shift')
+    await expect(extra).toContainText('Extra')
+    await expectToFitScreen(page)
+
+    // The extra shift is on the week too, drawn up to now.
+    await expect(day(page, (new Date().getDay() + 6) % 7).getByRole('button', { name: new RegExp(`^${person}, From 11:00`) })).toBeVisible()
+
+    // Amara clocks into her own shift and forgets to end it.
+    await button(page, 'Clock in').click()
+    await page.getByRole('dialog').getByRole('button', { name: 'Clock in' }).click()
+    await expect(now).toContainText('2 people')
+    await page.clock.fastForward('05:30:00')
+    await visit(page, '/calendar')
+    const amara = clockedInNow(page).getByRole('link', { name: /Amara Okafor/ })
+    await expect(amara).toContainText('Past its end')
+    await expect(amara).toContainText('Shift 08:00–16:00')
+
+    await amara.click()
+    await expect(page.getByRole('heading', { level: 1, name: 'Shift detail' })).toBeVisible()
+    await expect(button(page, 'Correct times')).toBeVisible()
+
+    await visit(page, '/team')
+    await expect(page.getByText(/· 2 clocked in/)).toBeVisible()
+  })
+})
+
+/** Someone the demo has working today, besides Amara, and their shift's hours. */
+function onToday(): { person: string; start: string; end: string } {
+  const people = ['Amara Okafor', 'Tom Whitfield', 'Lena Ferreira', 'Marcus Bell', 'Priya Raman', 'Joe Adeyemi', 'Sofia Lindqvist']
+  const weekday = new Date().getDay()
+  const index = people.findIndex((_, i) => i > 0 && (weekday + i) % 7 < 4)
+  return index % 2 === 0
+    ? { person: people[index], start: '08:00', end: '16:00' }
+    : { person: people[index], start: '14:00', end: '22:00' }
+}
+
+test.describe('a manager clocking people out', () => {
+  test.skip(({ viewport }) => ![360, 1440].includes(viewport?.width ?? 0), 'Once on a phone and once on a desktop')
+
+  test('from Clocked in now, at the time it is', async ({ page }) => {
+    const person = offToday()
+    await page.clock.install({ time: todayAt('11:00') })
+    await switchTo(page, person)
+    await visit(page, '/calendar')
+    await button(page, 'Clock in').click()
+    await page.getByRole('dialog').getByRole('button', { name: 'Clock in' }).click()
+    await expect(timer(page)).toBeVisible()
+    await page.clock.fastForward('02:00:00')
+
+    await switchTo(page, 'Amara Okafor')
+    await visit(page, '/calendar')
+    await clockedInNow(page).getByRole('button', { name: `Clock out ${person}` }).click()
+    const sheet = page.getByRole('dialog', { name: `Clock out ${person}?` })
+    await expect(sheet.getByLabel('Clocked out at')).toHaveValue(/T13:00$/)
+    await expect(sheet.getByText(/Clocked in at 11:00 · 2h 00 worked/)).toBeVisible()
+    await expectToFitScreen(page)
+
+    // Not before they clocked in.
+    await sheet.getByLabel('Clocked out at').fill(`${format(new Date(), 'yyyy-MM-dd')}T10:30`)
+    await expect(sheet.getByText('They were working until at least 11:00.')).toBeVisible()
+    await expect(sheet.getByRole('button', { name: 'Clock out' })).toBeDisabled()
+    await sheet.getByLabel('Clocked out at').fill(`${format(new Date(), 'yyyy-MM-dd')}T13:00`)
+    await sheet.getByRole('button', { name: 'Clock out' }).click()
+
+    await expect(page.getByText(`${person} clocked out`)).toBeVisible()
+    await expect(clockedInNow(page).getByText('Nobody is clocked in.')).toBeVisible()
+
+    // They see it, and who did it.
+    await switchTo(page, person)
+    await visit(page, '/calendar')
+    await page.getByRole('button', { name: 'Calendar', exact: true }).click()
+    await expect(page.getByText(/Recorded 11:00–13:00 · Total worked · Clocked out by Amara Okafor/)).toBeVisible()
+    await expect(button(page, 'Clock in again')).toBeVisible()
+  })
+
+  test('a forgotten End shift, clocked out when the shift ended', async ({ page }) => {
+    const { person, start, end } = onToday()
+    await page.clock.install({ time: todayAt(start) })
+    await switchTo(page, person)
+    await visit(page, '/calendar')
+    await button(page, 'Clock in').click()
+    await page.getByRole('dialog').getByRole('button', { name: 'Clock in' }).click()
+    await expect(timer(page)).toBeVisible()
+    // Gone home at the end of the shift, still on the clock an hour and a half later.
+    await page.clock.fastForward('09:30:00')
+
+    await switchTo(page, 'Amara Okafor')
+    await visit(page, '/calendar')
+    const row = clockedInNow(page).getByRole('listitem').filter({ hasText: person })
+    await expect(row).toContainText('Past its end')
+    await row.getByRole('button', { name: `Clock out ${person}` }).click()
+    const sheet = page.getByRole('dialog', { name: `Clock out ${person}?` })
+    await sheet.getByRole('button', { name: `At the end of their shift, ${end}` }).click()
+    await expect(sheet.getByLabel('Clocked out at')).toHaveValue(new RegExp(`T${end}$`))
+    await expect(sheet.getByText(/8h 00 worked/)).toBeVisible()
+    await sheet.getByRole('button', { name: 'Clock out' }).click()
+    await expect(row).toHaveCount(0)
+
+    await visit(page, '/calendar/hours')
+    const download = page.waitForEvent('download')
+    await button(page, 'Export CSV').click()
+    const csv = readFileSync((await (await download).path()) ?? '', 'utf8')
+    expect(csv).toMatch(new RegExp(`${person}.*${start}.*${end}.*Amara Okafor`))
+  })
+
+  test('the manager’s shift page clocks someone out too', async ({ page }) => {
+    const person = offToday()
+    await page.clock.install({ time: todayAt('11:00') })
+    await switchTo(page, person)
+    await visit(page, '/calendar')
+    await button(page, 'Clock in').click()
+    await page.getByRole('dialog').getByRole('button', { name: 'Clock in' }).click()
+    await expect(timer(page)).toBeVisible()
+
+    await switchTo(page, 'Amara Okafor')
+    await visit(page, '/calendar')
+    await clockedInNow(page).getByRole('link', { name: new RegExp(person) }).click()
+    await button(page, `Clock out ${person}`).click()
+    await page.getByRole('dialog').getByRole('button', { name: 'Clock out' }).click()
+    await expect(page.getByText(/Clocked out by Amara Okafor/)).toBeVisible()
+    await expect(page.getByRole('button', { name: `Clock out ${person}` })).toHaveCount(0)
   })
 })

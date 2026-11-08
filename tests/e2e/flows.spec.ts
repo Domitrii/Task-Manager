@@ -31,7 +31,9 @@ test.describe('with the demo venue', () => {
     await button(page, 'End shift').click()
     await page.getByRole('dialog').getByRole('button', { name: 'End shift' }).click()
     await expect(page.getByText('Shift ended')).toBeVisible()
-    await expect(page.getByText(/No further shift today/)).toBeVisible()
+    // Done for the day, but they could come back: clocking in again starts an extra shift.
+    await expect(page.getByText(/Clocking in again starts an extra shift/)).toBeVisible()
+    await expect(button(page, 'Clock in again')).toBeVisible()
     await button(page, 'Calendar').click()
     await expect(page.getByText('Shift completed')).toBeVisible()
 

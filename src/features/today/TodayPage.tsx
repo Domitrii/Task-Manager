@@ -1,17 +1,22 @@
 import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { format } from 'date-fns'
-import { selectHome, type EntryAction } from '@/data/attention'
+import { selectHome, type AlertGroup, type EntryAction } from '@/data/attention'
 import { selectDailyCompletion, selectDashboard, selectOrdersToCheckIn } from '@/data/selectors'
 import { useStore } from '@/data/store'
 import type { ID } from '@/data/types'
 import { useNow } from '@/lib/useNow'
 import { useQuickEntry } from '@/components/layout/quickEntry'
 import { Badge } from '@/components/ui/Badge'
+import { useAlerts } from '@/features/notifications/useAlerts'
 import { TaskRunModal } from '@/features/tasks/TaskRunModal'
 import { HomeCardView } from './HomeCard'
 import { AtAGlance, WeekStrip, type GlanceRow } from './TodayStats'
 
 const PROBE_CATEGORIES = ['cooking', 'cooling'] as const
+
+/** The bell's sections that need someone now; "Coming soon" and reminders don't yet. */
+const NEEDS_ACTION = new Set<AlertGroup>(['missed', 'overdue', 'attention'])
 
 /** Home. Says how the venue stands, and opens onto the three things people check on it. */
 export function TodayPage() {
@@ -23,6 +28,8 @@ export function TodayPage() {
   const running = data.tasks.find((task) => task.id === runningId)
 
   const home = useMemo(() => selectHome(data, now), [data, now])
+  const { alerts } = useAlerts()
+  const attention = alerts.filter((alert) => NEEDS_ACTION.has(alert.group)).length
   const week = useMemo(() => selectDailyCompletion(data, 7, now), [data, now])
   const summary = useMemo(() => selectDashboard(data, now), [data, now])
   const orders = useMemo(() => selectOrdersToCheckIn(data, now), [data, now])
@@ -72,8 +79,11 @@ export function TodayPage() {
           {home.period ? ` · ${home.period} shift` : ''}
         </p>
         <div className="mt-2">
-          {home.attention > 0 ? (
-            <Badge tone="fail">! {home.attention} {home.attention === 1 ? 'needs' : 'need'} attention</Badge>
+          {/* The same as the bell's Missed, Overdue and Needs attention, and opens them. */}
+          {attention > 0 ? (
+            <Link to="/notifications" aria-label={`${attention} ${attention === 1 ? 'needs' : 'need'} attention. Show them`}>
+              <Badge tone="fail">! {attention} {attention === 1 ? 'needs' : 'need'} attention</Badge>
+            </Link>
           ) : (
             <Badge tone="pass">✓ All clear</Badge>
           )}

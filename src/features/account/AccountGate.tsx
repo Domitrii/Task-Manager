@@ -15,6 +15,7 @@ import {
   fetchTeamPeople,
   leaveTeam,
   regenerateJoinCode,
+  removeTeamMember,
   setApprover,
   setManager,
   type TeamRef,
@@ -22,6 +23,7 @@ import {
 import { TeamChoicePage } from './TeamChoicePage'
 import { useJoinRequests } from './useJoinRequests'
 import { useManager } from './useManager'
+import { unregisterPush } from '@/features/notifications/push'
 import { YourNamePage } from './YourNamePage'
 
 interface Account {
@@ -206,7 +208,18 @@ function TeamSession({
   const { userId, email, name, team, jobRole } = account
   const [repository] = useState(() => new SupabaseRepository(client, team.id, userId, legacy))
   const { requests: joinRequests, refresh: refreshJoins, drop: dropJoin } = useJoinRequests(client, team)
-  const isManager = useManager(client, team, userId)
+  const { isManager, removed, managerIds } = useManager(client, team, userId)
+  const toast = useToast()
+
+  // Taken out of the team from someone else's device. What's on this one isn't
+  // theirs to see any more, and can't be sent, so it goes.
+  useEffect(() => {
+    if (!removed) return
+    void Promise.all([repository.clearLocal(), unregisterPush(client)]).then(() => {
+      toast.error(`You’re no longer in ${team.name}`, 'Someone who runs the team took you out. Ask them if that’s a mistake.')
+      onLeft()
+    })
+  }, [removed, repository, client, team.name, toast, onLeft])
 
   useEffect(() => {
     repository.start()
@@ -217,8 +230,9 @@ function TeamSession({
 
   // Kept apart from the status, which changes every sync, and the requests and
   // manager flag, which change on every check, so these stay the same functions.
-  const actions = useMemo<Omit<SyncApi, 'status' | 'joinRequests' | 'isManager'>>(
+  const actions = useMemo<Omit<SyncApi, 'status' | 'joinRequests' | 'isManager' | 'managerIds'>>(
     () => ({
+      userId,
       email,
       name,
       team,
@@ -228,17 +242,29 @@ function TeamSession({
         return error ? authErrorMessage(error) : null
       },
       async signOut() {
+        // A signed-out device shouldn't keep getting this person's reminders.
+        await unregisterPush(client)
+        await repository.clearLocal()
+        await onSignOut()
+      },
+      async signOutEverywhere() {
+        // Ends every session on the server first: if that fails, nothing has changed anywhere.
+        await unregisterPush(client)
+        const { error } = await client.auth.signOut({ scope: 'global' })
+        if (error) throw error
         await repository.clearLocal()
         await onSignOut()
       },
       teamDetails: () => fetchTeamDetails(client, team, userId),
       newJoinCode: () => regenerateJoinCode(client, team),
       async leaveTeam() {
+        await unregisterPush(client)
         await leaveTeam(client)
         await repository.clearLocal()
         onLeft()
       },
       async deleteAccount() {
+        await unregisterPush(client)
         const { error } = await client.rpc('delete_my_account')
         if (error) throw error
         await repository.clearLocal()
@@ -267,12 +293,13 @@ function TeamSession({
       teamPeople: () => fetchTeamPeople(client, team),
       setApprover: (person, allowed) => setApprover(client, team, person, allowed),
       setManager: (person, allowed) => setManager(client, team, person, allowed),
+      removeMember: (person) => removeTeamMember(client, team, person),
     }),
     [client, repository, userId, email, name, team, onSignOut, onLeft, refreshJoins, dropJoin],
   )
   const api = useMemo<SyncApi>(
-    () => ({ ...actions, status, joinRequests, isManager }),
-    [actions, status, joinRequests, isManager],
+    () => ({ ...actions, status, joinRequests, isManager, managerIds }),
+    [actions, status, joinRequests, isManager, managerIds],
   )
 
   // Status changes every sync; the app itself only needs rendering once.

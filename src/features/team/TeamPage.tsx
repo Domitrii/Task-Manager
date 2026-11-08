@@ -2,11 +2,10 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { differenceInCalendarDays, parseISO } from 'date-fns'
 import { ChevronRight, Clock, ClipboardList, SearchX, TriangleAlert, UserRound } from 'lucide-react'
-import { shiftState } from '@/data/shifts'
+import { selectClockedIn } from '@/data/shifts'
 import { STAFF_ROLE_LABELS, staffRoleLabel } from '@/data/staffRoles'
 import { useStore } from '@/data/store'
 import type { Certificate, Invitation, StaffMember } from '@/data/types'
-import { toISODate } from '@/lib/compliance'
 import { useGoBack } from '@/lib/useGoBack'
 import { useNow } from '@/lib/useNow'
 import { Badge } from '@/components/ui/Badge'
@@ -27,20 +26,10 @@ export function certificateState(certificate: Certificate, now: Date): 'ok' | 'd
   return left <= DUE_SOON_DAYS ? 'due-soon' : 'ok'
 }
 
-/** Whether someone is at work right now. */
+/** Whether someone is at work right now: on any shift, a night shift from yesterday or an extra one included. */
 export function useClockedIn(): (staffId: string) => boolean {
-  const now = useNow()
   const { data } = useStore()
-  const today = toISODate(now)
-  const on = useMemo(
-    () =>
-      new Set(
-        data.shifts
-          .filter((shift) => shift.date === today && shiftState(shift) === 'clocked-in')
-          .map((shift) => shift.staffId),
-      ),
-    [data.shifts, today],
-  )
+  const on = useMemo(() => new Set(selectClockedIn(data).map((shift) => shift.staffId)), [data])
   return (staffId) => on.has(staffId)
 }
 

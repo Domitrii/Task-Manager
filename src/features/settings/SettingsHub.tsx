@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { format, parseISO } from 'date-fns'
-import { Bell, CircleHelp, RefreshCw, Sliders, Thermometer, UserRound } from 'lucide-react'
+import { Bell, CircleHelp, RefreshCw, Sliders, Tablet, Thermometer, UserRound } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { staffRoleLabel } from '@/data/staffRoles'
 import { useStore } from '@/data/store'
@@ -14,7 +14,15 @@ import { PageHeader } from '@/components/shared/PageHeader'
 import { PinnedAction, WITH_PINNED_ACTION } from '@/components/shared/PinnedAction'
 import { SyncAvatar, syncSummary } from '@/components/layout/ProfileMenu'
 import { useSync } from '@/features/account/sync'
+import { staffName } from '@/data/selectors'
+import type { StaffMember } from '@/data/types'
+import { Avatar } from '@/components/ui/Avatar'
+import { Field, Select, Toggle } from '@/components/ui/Field'
+import { SetPinModal } from '@/features/account/SharedDevice'
+import { LOCK_AFTER_CHOICES, readLockAfter, useSharedLock, writeLockAfter } from '@/features/account/sharedDeviceState'
+import { useIsManager } from '@/features/temperatures/access'
 import { NotificationToggles } from '@/features/notifications/NotificationToggles'
+import { ReminderList } from '@/features/notifications/ReminderList'
 import { failText, isApplianceItem, targetText } from '@/features/temperatures/thresholds'
 
 const lastSyncText = (at: string | null | undefined) => (at ? format(parseISO(at), 'd MMM HH:mm') : 'Not yet')
@@ -43,6 +51,12 @@ export function SettingsHubPage() {
             icon={Bell}
             title="Notifications"
             subtitle="Reminders, alerts and sign-off requests"
+          />
+          <ListCard
+            to="/settings/device"
+            icon={Tablet}
+            title="Shared kitchen device"
+            subtitle="Kitchen PINs, and passing a tablet between people"
           />
         </div>
       </section>
@@ -114,10 +128,7 @@ export function NotificationSettingsPage() {
       <PageHeader title="Notifications" onBack={goBack} />
       <p className="text-ink-muted text-[13px]">Choose your app preferences for {data.settings.venueName}.</p>
       <NotificationToggles />
-      <InfoCard title="Device permission">
-        <p>These are app preferences, not device notification permission.</p>
-        <p>Your phone’s notification settings control whether alerts can appear.</p>
-      </InfoCard>
+      <ReminderList />
     </div>
   )
 }
@@ -255,6 +266,150 @@ export function HelpPage() {
           that all changes are synced.
         </p>
       </InfoCard>
+    </div>
+  )
+}
+
+/** Turning a tablet into a shared kitchen device, and everyone's kitchen PINs. */
+export function SharedDevicePage() {
+  const { data, activeStaff, sharedDevice, setSharedDevice } = useStore()
+  const sync = useSync()
+  const manager = useIsManager()
+  const shared = useSharedLock()
+  const goBack = useGoBack('/settings')
+  const [settingPin, setSettingPin] = useState<StaffMember | null>(null)
+  const [lockAfter, setLockAfter] = useState(readLockAfter)
+  const people = data.staff.filter((person) => person.active)
+  // Only the account signed in on the tablet decides, and only while they're the one at it.
+  const signedInManager = Boolean(sync?.isManager) && activeStaff.userId === sync?.userId
+  const ownPin = Boolean(activeStaff.pinHash)
+
+  return (
+    <div className="space-y-3.5">
+      <PageHeader title="Shared kitchen device" onBack={goBack} />
+      {sync ? (
+        <InfoCard title="This device">
+          <p>
+            For a tablet that stays in the kitchen. A manager signs in on it once; after that, people tap their name
+            and enter their PIN, so what they record goes down in their name and they can do what they can on their own
+            phone. It locks itself when nobody has used it for a while.
+          </p>
+          <div className="pt-2">
+            {signedInManager || sharedDevice ? (
+              <ToggleRowPlain
+                title="Use as a shared kitchen device"
+                description={
+                  sharedDevice
+                    ? `Signed in as ${staffName(data, data.staff.find((person) => person.userId === sync.userId)?.id)}.`
+                    : ownPin
+                      ? 'You’ll stay signed in here; others use their PIN.'
+                      : 'Set your own PIN first, below.'
+                }
+                checked={sharedDevice}
+                disabled={!signedInManager || (!sharedDevice && !ownPin)}
+                onChange={setSharedDevice}
+              />
+            ) : (
+              <p className="text-ink">Only a manager can set this up, signed in on the tablet.</p>
+            )}
+          </div>
+          {sharedDevice ? (
+            <>
+              <Field label="Lock after" htmlFor="lock-after" className="pt-2">
+                <Select
+                  id="lock-after"
+                  value={lockAfter}
+                  onChange={(event) => {
+                    const minutes = Number(event.target.value)
+                    writeLockAfter(minutes)
+                    setLockAfter(minutes)
+                  }}
+                >
+                  {LOCK_AFTER_CHOICES.map((minutes) => (
+                    <option key={minutes} value={minutes}>
+                      {minutes} minutes without use
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <p className="pt-1">
+                The tablet stays signed in as a manager. Someone who got round the app on it could do what a manager
+                can, so keep it where the team works.
+              </p>
+              <div className="pt-2">
+                <Button onClick={shared.lock}>Lock now</Button>
+              </div>
+            </>
+          ) : null}
+        </InfoCard>
+      ) : (
+        <InfoCard title="This device">
+          <p>
+            Anyone can switch person from the menu at the top. Someone with a kitchen PIN needs it to switch to them.
+          </p>
+        </InfoCard>
+      )}
+
+      <section aria-labelledby="kitchen-pins" className="space-y-2.5">
+        <h2 id="kitchen-pins" className="font-display text-ink text-lg font-bold">
+          Kitchen PINs
+        </h2>
+        <p className="text-ink-muted text-[13px]">
+          {manager
+            ? 'You can set anyone’s PIN, for people without a phone of their own. PINs are never shown, only checked.'
+            : 'You can set your own. A manager can set anyone’s.'}
+        </p>
+        <ul className="bg-surface border-line divide-line divide-y rounded-xl border">
+          {people.map((person) => {
+            const mine = person.id === activeStaff.id
+            return (
+              <li key={person.id} className="flex items-center gap-3 px-3.5 py-3">
+                <Avatar person={person} size="sm" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-ink truncate text-sm font-medium">{person.name}</p>
+                  <p className="text-ink-muted text-xs">{person.pinHash ? 'PIN set' : 'No PIN'}</p>
+                </div>
+                {manager || mine ? (
+                  <Button size="sm" variant="ghost" onClick={() => setSettingPin(person)} aria-label={`Set ${person.name}’s PIN`}>
+                    {person.pinHash ? 'Change' : 'Set PIN'}
+                  </Button>
+                ) : null}
+              </li>
+            )
+          })}
+        </ul>
+      </section>
+
+      {settingPin ? <SetPinModal person={settingPin} onClose={() => setSettingPin(null)} /> : null}
+    </div>
+  )
+}
+
+/** A switch in a row of its own, inside a card. */
+function ToggleRowPlain({
+  title,
+  description,
+  checked,
+  disabled,
+  onChange,
+}: {
+  title: string
+  description: string
+  checked: boolean
+  disabled?: boolean
+  onChange: (on: boolean) => void
+}) {
+  return (
+    <div className="flex items-center gap-3">
+      <div className="min-w-0 flex-1">
+        <p className="text-ink text-sm font-semibold">{title}</p>
+        <p className="text-ink-muted text-xs">{description}</p>
+      </div>
+      {disabled ? (
+        <span className="text-ink-subtle text-xs">{checked ? 'On' : 'Off'}</span>
+      ) : (
+        <Toggle checked={checked} onChange={onChange} label={title} />
+      )}
     </div>
   )
 }

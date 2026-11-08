@@ -170,13 +170,17 @@ export function EditReadingModal({ log, onClose }: { log: TemperatureLog; onClos
 
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Checked by" required htmlFor="edit-staff">
-            <Select id="edit-staff" value={staffId} onChange={(event) => setStaffId(event.target.value)}>
-              {staffList.map((person) => (
-                <option key={person.id} value={person.id}>
-                  {person.name}
-                </option>
-              ))}
-            </Select>
+            {access.manager ? (
+              <Select id="edit-staff" value={staffId} onChange={(event) => setStaffId(event.target.value)}>
+                {staffList.map((person) => (
+                  <option key={person.id} value={person.id}>
+                    {person.name}
+                  </option>
+                ))}
+              </Select>
+            ) : (
+              <TextInput id="edit-staff" readOnly value={staffName(data, staffId)} />
+            )}
           </Field>
           <Field
             label="Date and time"
@@ -188,6 +192,7 @@ export function EditReadingModal({ log, onClose }: { log: TemperatureLog; onClos
               id="edit-at"
               type="datetime-local"
               value={recordedAt}
+              readOnly={!access.manager}
               max={toLocalInputValue(new Date())}
               invalid={submitted && !validTime}
               onChange={(event) => setRecordedAt(event.target.value)}

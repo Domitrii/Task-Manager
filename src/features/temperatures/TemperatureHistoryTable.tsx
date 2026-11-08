@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { History, Pencil } from 'lucide-react'
+import { enteredByOther } from '@/data/attribution'
 import { staffName } from '@/data/selectors'
 import { useStore } from '@/data/store'
 import type { MonitoredItem, TemperatureLog } from '@/data/types'
@@ -117,6 +118,7 @@ export function TemperatureHistoryTable({
                     <p className="text-ink-muted mt-0.5 text-xs">
                       {formatDateShort(log.recordedAt)}, <span className="tabular">{formatTime(log.recordedAt)}</span> ·{' '}
                       {log.period ? titleCase(log.period) : 'Ad-hoc'} · {staffName(data, log.recordedBy)}
+                      {enteredByOther(data, log, log.recordedBy) ? `, entered by ${enteredByOther(data, log, log.recordedBy)}` : ''}
                     </p>
                     {log.enteredAt && enteredLate(log) ? (
                       <p className="text-warn-700 dark:text-warn-500 text-[11px]">
@@ -216,6 +218,11 @@ export function TemperatureHistoryTable({
                         <Avatar person={person} size="xs" />
                         <span className="text-ink-muted text-[13px]">
                           {staffName(data, log.recordedBy)}
+                          {enteredByOther(data, log, log.recordedBy) ? (
+                            <span className="text-ink-subtle block text-[11px]">
+                              Entered by {enteredByOther(data, log, log.recordedBy)}
+                            </span>
+                          ) : null}
                         </span>
                       </span>
                     </Td>

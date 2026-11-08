@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button'
 import { useStore } from '@/data/store'
 import { useSync } from '@/features/account/sync'
 import { CalendarPage } from '@/features/calendar/CalendarPage'
+import { HoursPage } from '@/features/calendar/HoursPage'
 import { ShiftDetailPage } from '@/features/calendar/ShiftDetailPage'
 import { DeliveriesPage } from '@/features/deliveries/DeliveriesPage'
 import { DeliveriesBoard } from '@/features/deliveries/DeliveriesBoard'
@@ -31,6 +32,9 @@ import { TodayPage } from '@/features/today/TodayPage'
 
 // Reports and Settings are visited far less than the daily-entry screens, so
 // they load on demand rather than adding to the first paint on the pass.
+const InspectionPackPage = lazy(async () => ({
+  default: (await import('@/features/reports/InspectionPackPage')).InspectionPackPage,
+}))
 const ReportsPage = lazy(async () => ({
   default: (await import('@/features/reports/ReportsPage')).ReportsPage,
 }))
@@ -42,6 +46,7 @@ const settingsPage = <Name extends keyof typeof import('@/features/settings/Sett
 const SettingsHubPage = settingsPage('SettingsHubPage')
 const AccountVenuePage = settingsPage('AccountVenuePage')
 const NotificationSettingsPage = settingsPage('NotificationSettingsPage')
+const SharedDevicePage = settingsPage('SharedDevicePage')
 const ThresholdsPage = settingsPage('ThresholdsPage')
 const SyncPage = settingsPage('SyncPage')
 const HelpPage = settingsPage('HelpPage')
@@ -149,6 +154,7 @@ export function App() {
         <Route path="tasks" element={<TasksPage />} />
         <Route path="calendar" element={<CalendarPage />} />
         <Route path="calendar/shift/:id" element={<ShiftDetailPage />} />
+        <Route path="calendar/hours" element={<HoursPage />} />
         <Route
           path="templates"
           element={
@@ -162,6 +168,14 @@ export function App() {
           element={
             <Suspense fallback={<PageSkeleton />}>
               <ReportsPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="reports/inspection"
+          element={
+            <Suspense fallback={<PageSkeleton />}>
+              <InspectionPackPage />
             </Suspense>
           }
         />
@@ -184,6 +198,7 @@ export function App() {
         {[
           { path: 'account', page: <AccountVenuePage /> },
           { path: 'notifications', page: <NotificationSettingsPage /> },
+          { path: 'device', page: <SharedDevicePage /> },
           { path: 'thresholds', page: <ThresholdsPage /> },
           { path: 'sync', page: <SyncPage /> },
           { path: 'help', page: <HelpPage /> },

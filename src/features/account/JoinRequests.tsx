@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Avatar } from '@/components/ui/Avatar'
 import { Button } from '@/components/ui/Button'
 import { Toggle } from '@/components/ui/Field'
+import { Modal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
 import { jobRoleLabel, staffRoleLabel } from '@/data/staffRoles'
 import { useStore } from '@/data/store'
@@ -105,13 +106,17 @@ const PERMISSIONS: { key: Permission; label: string }[] = [
 
 /**
  * The owner's choice of what everyone else may do: be a manager (see every
- * reading and change any of them) and let new people in. `version` changes
- * when someone new joins.
+ * reading and change any of them) and let new people in. The owner can also
+ * take anyone out of the team, and managers can take out anyone who isn't one;
+ * managers see the list for that alone. `version` changes when someone new joins.
  */
-export function PermissionList({ sync, version }: { sync: SyncApi; version: number }) {
+export function PermissionList({ sync, version, owner }: { sync: SyncApi; version: number; owner: boolean }) {
   const { data } = useStore()
+  const toast = useToast()
   const [people, setPeople] = useState<TeamPerson[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [removing, setRemoving] = useState<{ person: TeamPerson; who: string } | null>(null)
+  const [busy, setBusy] = useState(false)
 
   const { teamPeople } = sync
   useEffect(() => {
@@ -143,16 +148,35 @@ export function PermissionList({ sync, version }: { sync: SyncApi; version: numb
     }
   }
 
-  const others = people?.filter((person) => person.role !== 'owner') ?? []
+  async function remove() {
+    if (!removing) return
+    setBusy(true)
+    setError(null)
+    try {
+      await sync.removeMember(removing.person.userId)
+      setPeople((list) => list?.filter((entry) => entry.userId !== removing.person.userId) ?? null)
+      toast.success(`${removing.who} is out of the team`, 'Their records stay, in their name.')
+      setRemoving(null)
+    } catch (failure) {
+      setError(teamErrorMessage(failure))
+      setRemoving(null)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const others =
+    people?.filter((person) => person.role !== 'owner' && (owner || !person.isManager)) ?? []
 
   return (
     <section aria-labelledby="permissions-heading">
       <h3 id="permissions-heading" className={HEADING}>
-        What people can do
+        {owner ? 'What people can do' : 'People in the team'}
       </h3>
       <p className="text-ink-muted mt-0.5 text-[13px]">
-        As the owner you can do everything. Managers see every reading with its photo and can change any of them at any
-        time; everyone else can change their own for {EDIT_MINUTES} minutes.
+        {owner
+          ? `As the owner you can do everything. Managers see every reading with its photo and can change any of them at any time; everyone else can change their own for ${EDIT_MINUTES} minutes. Only managers can record something in someone else’s name.`
+          : 'As a manager you can take someone out of the team, for example when they leave. Only the owner can take out another manager.'}
       </p>
       {people === null ? (
         error ? null : <p className="text-ink-subtle mt-2 text-sm">Loading…</p>
@@ -173,19 +197,24 @@ export function PermissionList({ sync, version }: { sync: SyncApi; version: numb
                     {staff ? staffRoleLabel(staff) : jobRoleLabel(person.jobRole)}
                   </p>
                 </div>
-                <div className="flex gap-4">
-                  {PERMISSIONS.map(({ key, label }) => (
-                    <span key={key} className="flex items-center gap-2">
-                      <span className="text-ink-muted text-xs font-medium" aria-hidden>
-                        {label}
-                      </span>
-                      <Toggle
-                        label={`${who}: ${label}`}
-                        checked={person[key]}
-                        onChange={(value) => void allow(person, key, value)}
-                      />
-                    </span>
-                  ))}
+                <div className="flex flex-wrap items-center gap-4">
+                  {owner
+                    ? PERMISSIONS.map(({ key, label }) => (
+                        <span key={key} className="flex items-center gap-2">
+                          <span className="text-ink-muted text-xs font-medium" aria-hidden>
+                            {label}
+                          </span>
+                          <Toggle
+                            label={`${who}: ${label}`}
+                            checked={person[key]}
+                            onChange={(value) => void allow(person, key, value)}
+                          />
+                        </span>
+                      ))
+                    : null}
+                  <Button size="sm" variant="ghost" onClick={() => setRemoving({ person, who })} aria-label={`Remove ${who} from the team`}>
+                    Remove
+                  </Button>
                 </div>
               </li>
             )
@@ -196,6 +225,25 @@ export function PermissionList({ sync, version }: { sync: SyncApi; version: numb
         <p role="alert" className="text-fail-600 dark:text-fail-500 mt-2 text-sm">
           {error}
         </p>
+      ) : null}
+      {removing ? (
+        <Modal
+          open
+          variant="alert"
+          onClose={() => (busy ? undefined : setRemoving(null))}
+          title={`Remove ${removing.who} from ${sync.team.name}?`}
+          description="They lose access on every device straight away. Everything they recorded stays, in their name. They can ask to join again with the team code."
+          footer={
+            <>
+              <Button variant="danger" disabled={busy} onClick={() => void remove()}>
+                {busy ? 'Removing…' : 'Remove from team'}
+              </Button>
+              <Button disabled={busy} onClick={() => setRemoving(null)}>
+                Cancel
+              </Button>
+            </>
+          }
+        />
       ) : null}
     </section>
   )

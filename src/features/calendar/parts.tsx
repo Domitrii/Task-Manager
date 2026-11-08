@@ -64,6 +64,7 @@ export function ClockStatusCard({ shift, now }: { shift: Shift; now: Date }) {
         {finished
           ? `Recorded ${formatTime(shift.clockedInAt)}–${formatTime(shift.clockedOutAt as string)} · Total worked`
           : `Started ${formatTime(shift.clockedInAt)} · Worked by ${format(now, 'HH:mm')}`}
+        {finished && shift.clockedOutBy ? ` · Clocked out by ${staffName(data, shift.clockedOutBy)}` : ''}
         {breaks > 0 ? ` · Break ${formatDuration(msToMinutes(breaks))}` : ''}
       </p>
       <p className="text-ink-subtle text-xs">
@@ -140,29 +141,42 @@ export function ClockBar({ shift, onClockedOut }: { shift: Shift | undefined; on
   const [confirming, setConfirming] = useState(false)
   const state = shift ? shiftState(shift) : null
 
-  if (!shift) {
-    return (
-      <PinnedAction>
-        <p className="text-ink-muted text-[13px]">No shift today</p>
-        <Button block size="lg" disabled>
-          Clock in
-        </Button>
-      </PinnedAction>
-    )
-  }
-  if (state === 'complete') {
-    return (
-      <PinnedAction>
-        <p className="text-ink-muted text-[13px]">
-          Shift complete, {formatDuration(msToMinutes(workedMs(shift, now)))} worked. No further shift today.
-        </p>
-      </PinnedAction>
-    )
-  }
-
+  // Clocking in without a shift on the schedule starts an extra one.
+  const extra = !shift || state === 'complete'
   const sheet = confirming ? (
-    <ClockSheet shift={shift} now={now} onClose={() => setConfirming(false)} onClockedOut={onClockedOut} />
+    <ClockSheet
+      shift={extra ? undefined : shift}
+      now={now}
+      onClose={() => setConfirming(false)}
+      onClockedOut={onClockedOut}
+    />
   ) : null
+
+  if (extra) {
+    return (
+      <>
+        <PinnedAction>
+          <p className="text-ink-muted text-[13px]">
+            {offline
+              ? 'Clock in and clock out are unavailable until you reconnect.'
+              : shift
+                ? `Shift complete, ${formatDuration(msToMinutes(workedMs(shift, now)))} worked. Back in? Clocking in again starts an extra shift.`
+                : 'No shift on the schedule today. You can still clock in: it’s recorded as an extra shift.'}
+          </p>
+          <Button
+            block
+            size="lg"
+            variant={shift || offline ? 'secondary' : 'primary'}
+            disabled={offline}
+            onClick={() => setConfirming(true)}
+          >
+            {shift ? 'Clock in again' : 'Clock in'}
+          </Button>
+        </PinnedAction>
+        {sheet}
+      </>
+    )
+  }
 
   if (state === 'clocked-in') {
     return (
@@ -223,7 +237,11 @@ function ShiftTimer({
               {running ? 'On break' : 'Clocked in'}
             </span>
             <span className="text-ink-muted block truncate text-xs">
-              {running ? `Worked ${worked}` : `Since ${formatTime(shift.clockedInAt as string)}, ends ${shift.endTime}`}
+              {running
+                ? `Worked ${worked}`
+                : shift.unscheduled
+                  ? `Since ${formatTime(shift.clockedInAt as string)} · Extra shift`
+                  : `Since ${formatTime(shift.clockedInAt as string)}, ends ${shift.endTime}`}
             </span>
           </p>
           <p role="timer" className="text-ink shrink-0 text-[30px] leading-none font-bold tabular-nums">
@@ -254,25 +272,26 @@ function offSchedule(minutes: number, what: string): string | null {
   return `${formatDuration(Math.abs(minutes))} ${minutes < 0 ? 'before' : 'after'} the scheduled ${what}`
 }
 
+/** Confirming a clock-in or End shift. Without a `shift`, clocking in starts an extra one. */
 function ClockSheet({
   shift,
   now,
   onClose,
   onClockedOut,
 }: {
-  shift: Shift
+  shift: Shift | undefined
   now: Date
   onClose: () => void
   onClockedOut?: () => void
 }) {
-  const { data, clockIn, clockOut } = useStore()
-  const out = shiftState(shift) === 'clocked-in'
+  const { data, activeStaff, clockIn, clockInWithoutShift, clockOut } = useStore()
+  const out = shift !== undefined && shiftState(shift) === 'clocked-in'
   const time = format(now, 'HH:mm')
-  const window = shiftWindow(shift)
   // To the nearest minute: the seconds on the clock shouldn't turn 6h 00 into 5h 59.
   const minutesFrom = (time: Date) => differenceInMinutes(now, time, { roundingMethod: 'round' })
-  const drift = out ? offSchedule(minutesFrom(window.end), 'end') : offSchedule(minutesFrom(window.start), 'start')
-  const breaks = breakMs(shift, now)
+  const planned = shift && !shift.unscheduled ? shiftWindow(shift) : null
+  const drift = planned ? (out ? offSchedule(minutesFrom(planned.end), 'end') : offSchedule(minutesFrom(planned.start), 'start')) : null
+  const breaks = shift ? breakMs(shift, now) : 0
 
   return (
     <Modal
@@ -289,8 +308,10 @@ function ClockSheet({
               if (out) {
                 clockOut(shift.id)
                 onClockedOut?.()
-              } else {
+              } else if (shift) {
                 clockIn(shift.id)
+              } else {
+                clockInWithoutShift()
               }
               onClose()
             }}
@@ -300,18 +321,20 @@ function ClockSheet({
         </>
       }
     >
-      <p className="text-ink text-sm font-semibold">{staffName(data, shift.staffId)}</p>
+      <p className="text-ink text-sm font-semibold">{shift ? staffName(data, shift.staffId) : activeStaff.name}</p>
       <p className="text-ink-muted mt-2 text-[13px]">{data.settings.venueName}</p>
       <p className="text-ink-muted text-[13px]">
-        {[shift.role, longDate(shift.date)].filter(Boolean).join(' · ')}
+        {[shift?.role, longDate(shift?.date ?? format(now, 'yyyy-MM-dd'))].filter(Boolean).join(' · ')}
       </p>
       <div className="border-line mt-3 rounded-xl border p-3.5">
-        <p className="text-ink-muted text-[13px]">Scheduled shift {shiftHours(shift)}</p>
+        <p className="text-ink-muted text-[13px]">
+          {planned && shift ? `Scheduled shift ${shiftHours(shift)}` : 'Extra shift, not on the schedule. A manager can see it.'}
+        </p>
         <p className="text-ink mt-1 text-sm font-semibold">
           {out ? 'End' : 'Clock-in'} time · {time}
         </p>
         {drift ? <p className="text-ink-muted mt-1 text-xs">{drift}</p> : null}
-        {out && shift.clockedInAt ? (
+        {out && shift?.clockedInAt ? (
           <p className="text-ink-muted mt-1 text-xs">
             Started {formatTime(shift.clockedInAt)} · Worked {formatDuration(msToMinutes(workedMs(shift, now)))}
             {breaks > 0 ? ` · Break ${formatDuration(msToMinutes(breaks))}` : ''}

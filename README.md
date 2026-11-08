@@ -46,7 +46,17 @@ signed in to it shares them, and recording carries on offline (see *Sync and off
    variable, because those are bundled into the browser build.
 3. Under **Authentication → URL Configuration**, set the Site URL to where the app is deployed and
    add `http://localhost:5173` as a redirect URL, so sign-up confirmation links come back to the app.
-4. On Vercel, add the same two `VITE_` variables to the project and redeploy.
+4. Under **Authentication → Providers → Email**, set the minimum password length to 8, to match
+   the app. Sign-in links ("Email me a sign-in link") and password resets need working email, so
+   set up custom SMTP under **Authentication → Emails**.
+5. On Vercel, add the same `VITE_` variables to the project and redeploy.
+
+Optional, each switched on by its own setting:
+
+- **Google sign-in.** Turn Google on under **Authentication → Providers** (it needs an OAuth
+  client from Google Cloud), then set `VITE_GOOGLE_SIGN_IN=true`. Until then the button is hidden.
+- **Reminders on a closed phone.** See *Reminders* below: it needs the push migration, an Edge
+  Function, four secrets and a scheduled job.
 
 After signing in, someone without a team either creates one or asks to join one with its
 8-character code, which everyone in the team can find under **Settings → Team** (the owner can
@@ -183,6 +193,11 @@ closing), each task in one state:
 Readings are never backdated into a closed window, so a missed check can only become `late`,
 never `done`.
 
+Home's **need attention** count is the bell's *Missed*, *Overdue* and *Needs attention* together,
+and tapping it opens that list. The bell is personal: someone who isn't a manager hears about their
+own tasks and ones nobody has been given, not everyone else's, and sign-off requests only go to
+managers. Temperatures, checklists and deliveries are anyone's, so everyone hears about those.
+
 Everything that adds a record goes through one API, `useQuickEntry()`
 (`components/layout/quickEntry.ts`), and the **Log** button (the centre tab on phones, top
 right on desktop) opens a sheet over it. Entering a temperature offers **Save and next**
@@ -190,8 +205,8 @@ whenever another scheduled check is waiting, so a round of fridges is one sheet,
 
 ### The day's progress bar
 
-A bar in the top band shows today's whole list (`selectDayProgress`), except on Calendar and
-Notifications. A page can put its own list there instead (`useHeaderProgress`), as the Checklist
+A bar in the top band shows today's whole list (`selectDayProgress`), as "12 of 52 done today",
+except on Calendar and Notifications. A page can put its own list there instead (`useHeaderProgress`), as the Checklist
 does:
 - the scheduled temperature checks and checklists, later ones included
 - tasks due today or overdue
@@ -262,8 +277,122 @@ timer counts time worked: during a break it shows the time on break instead, and
 counted in the total. **End shift** works at any time, and the confirmation says how far off the
 schedule that is.
 
+**No shift on the schedule?** People can still clock in. It starts an *extra shift* in their name,
+from that moment (`Shift.unscheduled`), which ends when they clock out. Once a shift is done the bar
+offers **Clock in again**, which starts another. The one thing they still can't do is start a planned
+shift early: before it starts, Clock in waits for it. Extra shifts show on the week as drawn so far,
+count towards hours worked but not hours scheduled, and are marked in the Hours export.
+
+Managers see **Clocked in now** at the top of the Calendar: everyone on the clock, since when, how
+long they've worked, and whether it's an extra shift, a break, or a shift past its planned end
+(usually a forgotten End shift). **Clock out** beside each person (and on their shift's page) ends
+it now or when they actually left, with a one-tap choice of the planned end for a shift that has run
+past it; it can't be before they clocked in or started a break. Any break still running ends then
+too. The shift keeps who clocked them out (`clockedOutBy`), which they see on their Calendar and
+which is in the Hours export. Each person also opens their shift, where a manager can correct the
+times.
+
 The rules are checked on the device, in the store as well as on the buttons, against the device's
-own clock. The server doesn't check them, because it doesn't know the venue's time zone.
+own clock. The server holds who may clock what (see *Who can do what*) and takes a clocked time as
+the device sends it only within 15 minutes of its own clock, since the app only clocks while online
+and hours are paid from these. It doesn't check "not before the shift starts", because it doesn't
+know the venue's time zone.
+
+### Reminders
+
+Anyone can set their own reminders under **Settings → Notifications** (the top of the bell's page
+links there): a time, how it repeats (every day, chosen days or just once) and, if they like, what
+to check. Left blank, it says *Check all the details*. At that time it joins the bell's list under
+*Your reminders*, counting what's waiting (`1 missed · 11 overdue · 6 coming soon`), and stays
+until the end of the day. A one-off leaves the settings list once it has gone off.
+
+Reminders live on the person (`StaffMember.reminders`), so they follow them between devices and
+sync with no migration. Nothing is scheduled anywhere: `wentOffToday` works it out from the clock,
+and `Reminder.setAt` stops one going off for a time that had already passed when it was set.
+
+`useReminderAlarm` also announces each one once per device: a device notification if that's allowed
+and it's within five minutes of the time, otherwise a toast. Saving a reminder is what asks for
+permission. Phones only accept notifications from the service worker, which `vite.config.ts` gives
+`public/sw-notifications.js`: it shows pushed reminders and handles tapping a notification.
+
+**With Mise closed**, reminders come by Web Push. Each device that allows notifications registers
+with its browser's push service and saves where to send in `push_subscriptions`, with its time zone
+(`src/features/notifications/push.ts`). Every minute a scheduled job calls the `send-reminders` Edge
+Function, which asks `due_reminder_pushes` what went off in the last 10 minutes on each device's
+clock and sends it once (`push_sent`). Its tag is the bell's key, so if the open app already showed
+it, the two don't double up. Signing out, leaving or being taken out of the team stops it. A shared
+kitchen device doesn't register. iPhones only allow this once Mise is on the Home Screen (it has a
+web app manifest and icons in `public/`); the settings page says so.
+
+To switch it on:
+
+1. Run `supabase/migrations/20261108120000_push_reminders.sql`.
+2. Make a key pair with `npx web-push@3.6.7 generate-vapid-keys`.
+3. `supabase secrets set VAPID_PUBLIC_KEY=… VAPID_PRIVATE_KEY=… VAPID_SUBJECT=mailto:you@example.com CRON_SECRET=<a long random string>`
+4. `supabase functions deploy send-reminders --no-verify-jwt`
+5. In the SQL Editor, turn on the `pg_cron` and `pg_net` extensions and schedule it:
+
+   ```sql
+   select cron.schedule('send-reminders', '* * * * *', $$
+     select net.http_post(
+       url := 'https://<project-ref>.supabase.co/functions/v1/send-reminders',
+       headers := jsonb_build_object('x-cron-secret', '<the same CRON_SECRET>')
+     )
+   $$);
+   ```
+
+6. Set `VITE_VAPID_PUBLIC_KEY` to the public key in `.env` and on Vercel, and redeploy.
+
+Without the key, everything else works and reminders only pop up while Mise is open.
+
+### Who can do what
+
+Everyone in a team has their own account. The owner, and whoever the owner makes a manager, can do
+more; the server holds the same lines as the screens (`records_guard`, migration
+`20261108000000_access_rules.sql`), so a change made round the app is put right:
+
+- **A record is in the name of whoever did it.** Someone who isn't a manager records temperatures,
+  deliveries and checklists as themselves, at the time they enter them; the forms don't offer anyone
+  else, and the server writes their name over any other. A manager can record for someone else or
+  for an earlier time, and the record then says who entered it and when (`enteredBy`/`enteredAt`,
+  shown as "entered by Amara, 14:05", and in the CSV exports).
+- **Shifts and orders.** Only managers add, move or delete shifts and place, change or cancel
+  orders. Everyone else can clock their own shift in and out and take breaks, and once a time is
+  recorded it stays; clocking in with no shift creates an extra one, only ever in their own name and
+  starting at the server's time. They can check an order in, in their own name. Only managers delete deliveries
+  or checklists, and only managers sign issues off.
+- **Taking someone out.** In **Settings → Team**, the owner can take anyone out of the team, and a
+  manager anyone who isn't a manager. They lose access straight away; their staff record is marked
+  as not working here, and their name stays on what they did. Their device notices within a
+  minute, clears the team's records and goes back to choosing a team.
+- **A shared kitchen device.** A manager signs in on a tablet that stays in the kitchen and turns on
+  **Settings → Shared kitchen device**. People then tap their name and enter their kitchen PIN; what
+  they record is in their name, and they can do what they could on their own phone. It locks after a
+  few idle minutes (2, 5, 10 or 30) and on every reload. PINs are 4 to 6 digits, set by each person
+  in their profile or by a manager for anyone, and kept only as a slow salted hash (`lib/pin.ts`).
+  Five wrong PINs make it wait 30 seconds. The tablet itself is signed in as a manager, so someone
+  who got round the app on it could do what a manager can; the settings page says to keep it where
+  the team works. PINs from before were kept as typed; a manager's device hashes them and drops the
+  typed ones.
+
+Signing in: passwords need 8 characters and not a common one. **Email me a sign-in link** signs in
+without a password, and says the same whether or not the address has an account. Changing your
+password signs out your other devices unless you untick it, and **Sign out everywhere** in the
+profile ends every session, for a lost phone.
+
+### Hours and the inspection pack
+
+**Calendar → Hours** shows each person's week from the clock: shifts, hours scheduled, hours worked
+(clock in to clock out, less breaks) and time on break, with anyone still clocked in called out.
+Managers see everyone and can export the week as CSV; everyone else sees their own. On a shift's
+page a manager can **Correct times**, say for a forgotten End shift; the reason and what it said
+before stay on the shift (`timeCorrections`) and in the export.
+
+**Reports → Inspection pack** is every record an inspection asks for on one page, for 7 to 90 days:
+a summary, readings out of range with what was done, every reading with who took it, checklists
+with failed checks, deliveries with rejections, issues with sign-off, training certificates and probe
+calibration. **Print or save as PDF** uses the browser's print dialog; the app's bars and menus
+don't print.
 
 ### Supplier orders
 
@@ -273,6 +402,11 @@ its delivery day, every order is laid out in full under *Upcoming deliveries*, w
 total, notes and who placed it. Below that, each supplier's card has its past orders. Managers can
 change an order while it's open, repeat any past order as a new one, and cancel orders; cancelled
 ones stay in the history. Suppliers themselves are still edited in Settings.
+
+Low stock leads here too. For a manager, **Stock** lists what's low by supplier with **Start
+order**, and a low item has **Order more from …**. Either opens a new order with those items on it,
+each enough to take it back to twice its low-stock level (`data/restock.ts`), to change before
+placing it.
 
 **Deliveries** is for today: **Expected** lists the orders due to be checked in, and **Received**
 the last week's deliveries.
@@ -355,6 +489,13 @@ meaning never rests on hue alone.
   action, and move to the top while a sheet is open so they never cover its save button.
 - **Freezer entry starts negative.** Phone decimal keypads have no minus key, so the reading
   field has a +/− toggle and items with an upper limit at or below 0°C default to negative.
+- **What's drawn over what is one scale**, the `--layer-*` variables at the top of `src/index.css`:
+  a page's pinned bar, the tab bar, the top bar, dialogs, menus, the shared-device lock, toasts,
+  search. Use `z-(--layer-…)`, not a number. Each page draws in its own isolated layer (`main`), so a
+  page's sticky headings can never cover the bars around it, and parts with sticky layers of their
+  own (the week grid, the check matrix) are isolated too. Menus open on their own layer over
+  everything, placed against their button, upwards when there's more room above.
+  `tests/e2e/layers.spec.ts` checks what's actually on top.
 - **Modals are mounted only while open.** That gives each one a fresh form from plain `useState`
   initialisers instead of a reset effect.
 - **Nothing is pre-ticked.** Checklists start unanswered and a failed item needs a note before

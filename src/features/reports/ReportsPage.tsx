@@ -9,7 +9,7 @@ import { formatDate, formatDateTime, formatTemp } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
 import { cn, percent, sum } from '@/lib/utils'
 import { Badge } from '@/components/ui/Badge'
-import { Button } from '@/components/ui/Button'
+import { Button, ButtonLink } from '@/components/ui/Button'
 import { Card, CardBody, CardHeader } from '@/components/ui/Card'
 import { SegmentedControl } from '@/components/ui/Tabs'
 import { TableWrap, Td, Th, Tr } from '@/components/ui/Table'
@@ -103,6 +103,8 @@ export function ReportsPage() {
           Outcome: log.outcome === 'pass' ? 'In range' : 'Out of range',
           Check: log.period ?? 'Ad-hoc',
           'Recorded by': staffName(data, log.recordedBy),
+          'Entered by': log.enteredBy ? staffName(data, log.enteredBy) : '',
+          'Entered at': log.enteredAt ? formatDateTime(log.enteredAt) : '',
           'Corrective action': log.correctiveAction ?? '',
         }
       }),
@@ -129,6 +131,8 @@ export function ReportsPage() {
           Status: line.accepted ? 'Accepted' : 'Rejected',
           'Rejection reason': line.rejectionReason ?? '',
           'Checked by': staffName(data, delivery.checkedBy),
+          'Entered by': delivery.enteredBy ? staffName(data, delivery.enteredBy) : '',
+          'Entered at': delivery.enteredAt ? formatDateTime(delivery.enteredAt) : '',
         }))
       }),
     )
@@ -141,6 +145,10 @@ export function ReportsPage() {
         title="Reports"
         description="Due-diligence records across temperatures, deliveries and checklists — the evidence an inspection asks for."
         actions={
+          <>
+          <ButtonLink to="/reports/inspection" size="sm" variant="primary">
+            Inspection pack
+          </ButtonLink>
           <SegmentedControl
             value={range}
             onChange={setRange}
@@ -150,6 +158,7 @@ export function ReportsPage() {
               { value: '30', label: '30 days' },
             ]}
           />
+          </>
         }
       />
 

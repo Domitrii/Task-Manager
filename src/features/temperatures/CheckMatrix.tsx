@@ -92,7 +92,7 @@ export function CheckMatrix({
         })}
       </div>
 
-      <div className="relative hidden w-full overflow-x-auto md:block">
+      <div className="relative isolate hidden w-full overflow-x-auto md:block">
         <table className="w-full min-w-[700px] border-collapse text-sm">
           <thead>
             <tr>

@@ -73,13 +73,13 @@ export const DEFAULT_SETTINGS: VenueSettings = {
 }
 
 const staff: StaffMember[] = [
-  { id: 'st_amara', name: 'Amara Okafor', role: 'manager', initials: 'AO', active: true, pin: '1042', email: 'amara@copperlarder.example' },
-  { id: 'st_tom', name: 'Tom Whitfield', role: 'head_chef', initials: 'TW', active: true, pin: '2288' },
-  { id: 'st_lena', name: 'Lena Ferreira', role: 'chef', initials: 'LF', active: true, pin: '3317' },
-  { id: 'st_marcus', name: 'Marcus Bell', role: 'chef', initials: 'MB', active: true, pin: '4409' },
-  { id: 'st_priya', name: 'Priya Raman', role: 'supervisor', initials: 'PR', active: true, pin: '5521' },
-  { id: 'st_joe', name: 'Joe Adeyemi', role: 'front_of_house', initials: 'JA', active: true, pin: '6634' },
-  { id: 'st_sofia', name: 'Sofia Lindqvist', role: 'kp', initials: 'SL', active: true, pin: '7746' },
+  { id: 'st_amara', name: 'Amara Okafor', role: 'manager', initials: 'AO', active: true, email: 'amara@copperlarder.example' },
+  { id: 'st_tom', name: 'Tom Whitfield', role: 'head_chef', initials: 'TW', active: true },
+  { id: 'st_lena', name: 'Lena Ferreira', role: 'chef', initials: 'LF', active: true },
+  { id: 'st_marcus', name: 'Marcus Bell', role: 'chef', initials: 'MB', active: true },
+  { id: 'st_priya', name: 'Priya Raman', role: 'supervisor', initials: 'PR', active: true },
+  { id: 'st_joe', name: 'Joe Adeyemi', role: 'front_of_house', initials: 'JA', active: true },
+  { id: 'st_sofia', name: 'Sofia Lindqvist', role: 'kp', initials: 'SL', active: true },
   { id: 'st_daniel', name: 'Daniel Ross', role: 'chef', initials: 'DR', active: false },
 ]
 

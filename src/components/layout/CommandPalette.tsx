@@ -108,7 +108,7 @@ export function CommandPalette({ onClose, api }: { onClose: () => void; api: Qui
   }, {})
 
   return createPortal(
-    <div className="fixed inset-0 z-[70] flex items-start justify-center p-4 pt-[12vh]">
+    <div className="fixed inset-0 z-(--layer-palette) flex items-start justify-center p-4 pt-[12vh]">
       <div className="absolute inset-0 bg-slate-950/50 backdrop-blur-[2px]" onClick={onClose} aria-hidden />
       <div
         role="dialog"

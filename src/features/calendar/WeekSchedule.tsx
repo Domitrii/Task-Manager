@@ -12,6 +12,7 @@ import { Check, ChevronLeft, ChevronRight, Plus } from 'lucide-react'
 import { staffName } from '@/data/selectors'
 import {
   DAY_MINUTES,
+  drawnShift,
   onBreak,
   shiftHours,
   shiftState,
@@ -122,9 +123,13 @@ export function WeekSchedule({
   const todayIndex = dates.indexOf(today)
 
   const placed = useMemo(() => {
-    const segments = segmentsByDay(data.shifts, dates)
+    // An extra shift still going is drawn up to now.
+    const segments = segmentsByDay(
+      data.shifts.map((shift) => drawnShift(shift, now)),
+      dates,
+    )
     return dates.map((date) => placeInLanes(segments.get(date) ?? []))
-  }, [data.shifts, dates])
+  }, [data.shifts, dates, now])
 
   const away = useMemo(
     () =>
@@ -318,7 +323,7 @@ export function WeekSchedule({
         role="region"
         aria-label="Week grid"
         tabIndex={0}
-        className="scrollbar-none bg-surface border-line rounded-card h-[clamp(20rem,calc(100dvh-26rem),48rem)] overflow-auto border lg:h-[clamp(24rem,calc(100dvh-21.5rem),52rem)]"
+        className="scrollbar-none bg-surface border-line rounded-card isolate h-[clamp(20rem,calc(100dvh-26rem),48rem)] overflow-auto border lg:h-[clamp(24rem,calc(100dvh-21.5rem),52rem)]"
       >
         <div className="w-max min-w-full">
           <div ref={header} className="bg-surface border-line sticky top-0 z-30 border-b">

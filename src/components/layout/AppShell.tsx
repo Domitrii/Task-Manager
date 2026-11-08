@@ -6,7 +6,11 @@ import type { ID } from '@/data/types'
 import { toISODate } from '@/lib/compliance'
 import { useNow } from '@/lib/useNow'
 import { ChecklistRunModal } from '@/features/checklists/ChecklistRunModal'
+import { SharedDeviceGate } from '@/features/account/SharedDevice'
+import { useLegacyPins } from '@/features/account/sharedDeviceState'
 import { useAlerts } from '@/features/notifications/useAlerts'
+import { usePushRegistration } from '@/features/notifications/usePushRegistration'
+import { useReminderAlarm } from '@/features/notifications/useReminderAlarm'
 import { RaiseIssueModal } from '@/features/issues/IssueModals'
 import { DeliveryFormModal } from '@/features/deliveries/DeliveryFormModal'
 import { NewTaskModal } from '@/features/tasks/NewTaskModal'
@@ -32,7 +36,10 @@ type Sheet =
 export function AppShell() {
   const now = useNow()
   const { data } = useStore()
-  const { unread } = useAlerts()
+  const { alerts, unread } = useAlerts()
+  useReminderAlarm(alerts)
+  useLegacyPins()
+  usePushRegistration()
   const [sheet, setSheet] = useState<Sheet | null>(null)
   const [ownProgress, setOwnProgress] = useState<HeaderProgress | null>(null)
   const close = useCallback(() => setSheet(null), [])
@@ -77,9 +84,11 @@ export function AppShell() {
 
   return (
     <QuickEntryContext value={api}>
+      {/* Whatever the last person left open shouldn't be there for the next. */}
+      <SharedDeviceGate onLock={close}>
       <HeaderProgressContext value={setOwnProgress}>
       <div className="flex min-h-full">
-        <aside className="hidden w-60 shrink-0 lg:block">
+        <aside className="hidden w-60 shrink-0 lg:block print:hidden">
           <div className="fixed inset-y-0 left-0 w-60">
             <Sidebar counters={counters} />
           </div>
@@ -92,7 +101,8 @@ export function AppShell() {
             onOpenSearch={() => setSheet({ type: 'search' })}
             onOpenLog={api.openLog}
           />
-          <main className="min-w-0 flex-1 px-4 pt-5 pb-[calc(6.5rem+env(safe-area-inset-bottom))] sm:px-6 lg:px-8 lg:pb-12">
+          {/* `isolate`: nothing on a page can draw over the bars around it (see the layers in index.css). */}
+          <main className="isolate min-w-0 flex-1 px-4 pt-5 pb-[calc(6.5rem+env(safe-area-inset-bottom))] sm:px-6 lg:px-8 lg:pb-12 print:p-0">
             <div className="mx-auto max-w-[1400px]">
               <Outlet />
             </div>
@@ -117,6 +127,7 @@ export function AppShell() {
       {sheet?.type === 'issue' ? <RaiseIssueModal open onClose={close} /> : null}
       {sheet?.type === 'task' ? <NewTaskModal onClose={close} /> : null}
       </HeaderProgressContext>
+      </SharedDeviceGate>
     </QuickEntryContext>
   )
 }

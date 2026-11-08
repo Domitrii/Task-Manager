@@ -10,13 +10,15 @@ import { cn } from '@/lib/utils'
 import { Avatar } from '@/components/ui/Avatar'
 import { Button } from '@/components/ui/Button'
 import { Card, CardBody, CardHeader } from '@/components/ui/Card'
-import { Field, TextInput } from '@/components/ui/Field'
+import { Checkbox, Field, TextInput } from '@/components/ui/Field'
 import { Modal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { NotificationToggles } from '@/features/notifications/NotificationToggles'
+import { SetPinModal } from './SharedDevice'
+import { ReminderList } from '@/features/notifications/ReminderList'
 import { SignOutModal } from './AccountCard'
-import { authErrorMessage, useSync, type SyncApi } from './sync'
+import { authErrorMessage, MIN_PASSWORD, passwordProblem, useSync, type SyncApi } from './sync'
 import { teamErrorMessage } from './team'
 
 /**
@@ -58,6 +60,7 @@ export function ProfilePage() {
           <PasswordCard sync={sync} />
         </>
       ) : null}
+      <KitchenPinCard />
       <AppearanceCard />
       {sync ? (
         <>
@@ -79,8 +82,9 @@ function NotificationPreferencesSection() {
       <p className="text-ink-muted mt-1 text-[13px]">
         App preferences for {data.settings.venueName}, not device notification permission.
       </p>
-      <div className="mt-3">
+      <div className="mt-3 space-y-3.5">
         <NotificationToggles />
+        <ReminderList />
       </div>
     </section>
   )
@@ -232,13 +236,16 @@ function PasswordCard({ sync }: { sync: SyncApi }) {
   const [current, setCurrent] = useState('')
   const [password, setPassword] = useState('')
   const [repeat, setRepeat] = useState('')
+  // A changed password usually means someone else might know the old one.
+  const [signOutOthers, setSignOutOthers] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const mismatch = repeat.length > 0 && repeat !== password
+  const problem = password.length > 0 ? passwordProblem(password) : null
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!supabase || busy || !current || !password || password !== repeat) return
+    if (!supabase || busy || !current || !password || password !== repeat || passwordProblem(password)) return
     setBusy(true)
     setError(null)
     // Checked first, so someone who picks up a signed-in phone can't lock its owner out.
@@ -256,19 +263,31 @@ function PasswordCard({ sync }: { sync: SyncApi }) {
       setError(authErrorMessage(failure))
       return
     }
+    const others = signOutOthers ? await supabase.auth.signOut({ scope: 'others' }) : null
     setCurrent('')
     setPassword('')
     setRepeat('')
-    toast.success('Password changed', 'Use the new one next time you sign in on another device.')
+    if (others?.error) {
+      toast.error('Password changed, but other devices are still signed in', 'Use Sign out everywhere below once you’re online.')
+    } else {
+      toast.success(
+        'Password changed',
+        signOutOthers ? 'Your other devices have been signed out.' : 'Use the new one next time you sign in on another device.',
+      )
+    }
   }
 
   return (
     <FormCard
       title="Password"
-      description="Other devices stay signed in until they’re signed out."
+      description="Changing it can sign out your other devices too."
       onSubmit={submit}
       action={
-        <Button type="submit" variant="primary" disabled={busy || !current || !password || password !== repeat}>
+        <Button
+          type="submit"
+          variant="primary"
+          disabled={busy || !current || !password || password !== repeat || problem !== null}
+        >
           {busy ? 'Changing…' : 'Change password'}
         </Button>
       }
@@ -283,7 +302,12 @@ function PasswordCard({ sync }: { sync: SyncApi }) {
         />
       </Field>
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="New password" hint="At least 6 characters." htmlFor="profile-new-password">
+        <Field
+          label="New password"
+          hint={`At least ${MIN_PASSWORD} characters.`}
+          error={problem ?? undefined}
+          htmlFor="profile-new-password"
+        >
           <TextInput
             id="profile-new-password"
             type="password"
@@ -307,6 +331,12 @@ function PasswordCard({ sync }: { sync: SyncApi }) {
           />
         </Field>
       </div>
+      <Checkbox
+        label="Sign out my other devices"
+        description="Phones and tablets signed in as you will need the new password."
+        checked={signOutOthers}
+        onChange={(event) => setSignOutOthers(event.target.checked)}
+      />
       <ErrorText>{error}</ErrorText>
     </FormCard>
   )
@@ -364,7 +394,7 @@ function TeamCard({ sync }: { sync: SyncApi }) {
 }
 
 function AccountActionsCard({ sync }: { sync: SyncApi }) {
-  const [dialog, setDialog] = useState<'sign-out' | 'delete' | null>(null)
+  const [dialog, setDialog] = useState<'sign-out' | 'everywhere' | 'delete' | null>(null)
   const close = () => setDialog(null)
 
   return (
@@ -383,6 +413,16 @@ function AccountActionsCard({ sync }: { sync: SyncApi }) {
         </div>
         <div className="border-line flex flex-wrap items-center justify-between gap-3 border-t pt-4">
           <div className="min-w-0">
+            <p className="text-ink text-sm font-medium">Sign out everywhere</p>
+            <p className="text-ink-muted text-xs">For a lost phone, or a password someone else might know.</p>
+          </div>
+          <Button onClick={() => setDialog('everywhere')} className="gap-1.5">
+            <LogOut className="size-4" />
+            Sign out everywhere
+          </Button>
+        </div>
+        <div className="border-line flex flex-wrap items-center justify-between gap-3 border-t pt-4">
+          <div className="min-w-0">
             <p className="text-ink text-sm font-medium">Delete account</p>
             <p className="text-ink-muted text-xs">Removes your login for good. The team keeps its records.</p>
           </div>
@@ -394,6 +434,7 @@ function AccountActionsCard({ sync }: { sync: SyncApi }) {
       </CardBody>
 
       {dialog === 'sign-out' ? <SignOutModal sync={sync} onClose={close} /> : null}
+      {dialog === 'everywhere' ? <SignOutModal sync={sync} onClose={close} everywhere /> : null}
       {dialog === 'delete' ? <DeleteAccountModal sync={sync} onClose={close} /> : null}
     </Card>
   )
@@ -463,5 +504,21 @@ function DeleteAccountModal({ sync, onClose }: { sync: SyncApi; onClose: () => v
         </p>
       </form>
     </Modal>
+  )
+}
+
+/** Your PIN for a shared kitchen device. */
+function KitchenPinCard() {
+  const { activeStaff } = useStore()
+  const [open, setOpen] = useState(false)
+  return (
+    <Card>
+      <CardHeader title="Kitchen PIN" description="For taking over a shared kitchen tablet, so what you record there is in your name." />
+      <CardBody className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-ink text-sm">{activeStaff.pinHash ? 'Your PIN is set.' : 'You haven’t set a PIN.'}</p>
+        <Button onClick={() => setOpen(true)}>{activeStaff.pinHash ? 'Change PIN' : 'Set PIN'}</Button>
+      </CardBody>
+      {open ? <SetPinModal person={activeStaff} onClose={() => setOpen(false)} /> : null}
+    </Card>
   )
 }

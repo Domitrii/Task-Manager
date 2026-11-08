@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { Navigate, useParams } from 'react-router-dom'
 import { format, parseISO } from 'date-fns'
 import { TriangleAlert } from 'lucide-react'
+import { enteredNote } from '@/data/attribution'
 import { staffName } from '@/data/selectors'
 import { useStore } from '@/data/store'
 import { formatTemp } from '@/lib/format'
@@ -83,6 +84,7 @@ export function ApplianceDetailPage() {
                     <span className="text-ink block text-sm font-semibold tabular-nums">{formatTemp(log.temperature)}</span>
                     <span className="block truncate text-xs">
                       {format(parseISO(log.recordedAt), 'd MMM HH:mm')} · {staffName(data, log.recordedBy)}
+                      {enteredNote(data, log, log.recordedBy, log.recordedAt) ? ` · ${enteredNote(data, log, log.recordedBy, log.recordedAt)}` : ''}
                     </span>
                   </span>
                   <ReadingBadge log={log} />

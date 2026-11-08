@@ -51,7 +51,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {/* Just above the tab bar on phones and tablets, and above a page's pinned
           action. With a sheet open it moves to the top, where it can't sit over
           the sheet's "Save and next". */}
-      <div className="pointer-events-none fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-[60] flex flex-col items-center gap-2 p-3 lg:inset-x-auto lg:right-0 lg:bottom-0 lg:items-end lg:p-4 [body:has([data-pinned-action])_&]:bottom-[calc(8rem+env(safe-area-inset-bottom))] [body:has([data-pinned-action])_&]:lg:bottom-0 [body:has([role=dialog])_&]:top-[env(safe-area-inset-top)] [body:has([role=dialog])_&]:bottom-auto [body:has([role=dialog])_&]:lg:top-auto [body:has([role=dialog])_&]:lg:bottom-0">
+      <div className="pointer-events-none fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-(--layer-toast) print:hidden flex flex-col items-center gap-2 p-3 lg:inset-x-auto lg:right-0 lg:bottom-0 lg:items-end lg:p-4 [body:has([data-pinned-action])_&]:bottom-[calc(8rem+env(safe-area-inset-bottom))] [body:has([data-pinned-action])_&]:lg:bottom-0 [body:has([role=dialog])_&]:top-[env(safe-area-inset-top)] [body:has([role=dialog])_&]:bottom-auto [body:has([role=dialog])_&]:lg:top-auto [body:has([role=dialog])_&]:lg:bottom-0">
         {entries.map((entry) => {
           const { icon: Icon, className, tint } = TONES[entry.tone]
           return (

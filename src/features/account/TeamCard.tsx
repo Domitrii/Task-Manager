@@ -119,7 +119,9 @@ export function TeamCard() {
           </Button>
         </div>
 
-        {details?.role === 'owner' ? <PermissionList sync={sync} version={joined} /> : null}
+        {details?.role === 'owner' || details?.isManager ? (
+          <PermissionList sync={sync} version={joined} owner={details.role === 'owner'} />
+        ) : null}
       </CardBody>
 
       {dialog === 'new-code' ? (

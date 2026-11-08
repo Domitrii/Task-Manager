@@ -54,12 +54,15 @@ export function OrderFormModal({
   supplierId: initialSupplierId,
   existing,
   repeatOf,
+  startWith,
   onClose,
 }: {
   /** Who it's from, when opened from a supplier. Otherwise it's picked in the form. */
   supplierId?: ID
   existing?: SupplierOrder
   repeatOf?: SupplierOrder
+  /** Items to start a new order with, e.g. what's low on stock. */
+  startWith?: Array<Omit<SupplierOrderLine, 'id'>>
   onClose: () => void
 }) {
   const now = useNow()
@@ -90,13 +93,11 @@ export function OrderFormModal({
   const [orderBy, setOrderBy] = useState(existing?.orderBy ?? '')
   const [notes, setNotes] = useState(existing?.notes ?? '')
   const [lines, setLines] = useState<FormLine[]>(() => {
-    const source = existing?.lines ?? repeatOf?.lines
-    if (!source) return [emptyLine(supplier)]
-    return source.map((line) => ({
-      ...line,
-      id: existing ? line.id : createId('ol'),
-      priceSet: line.unitPrice !== undefined,
-    }))
+    if (existing) return existing.lines.map((line) => ({ ...line, priceSet: line.unitPrice !== undefined }))
+    // A repeat, or items to start with: the same goods as new lines of their own.
+    const source = repeatOf?.lines ?? startWith
+    if (!source?.length) return [emptyLine(supplier)]
+    return source.map((line) => ({ ...line, id: createId('ol'), priceSet: line.unitPrice !== undefined }))
   })
   const [submitted, setSubmitted] = useState(false)
   // The item just added, whose product field takes the focus, scrolling it into view.

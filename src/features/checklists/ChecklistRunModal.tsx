@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react'
 import { AlertTriangle, Check, CheckCircle2, Minus, X } from 'lucide-react'
+import { staffName } from '@/data/selectors'
 import { useStore } from '@/data/store'
+import { useIsManager } from '@/features/temperatures/access'
 import type { ChecklistResultStatus, ChecklistRun, ChecklistTemplate } from '@/data/types'
 import { toISODate } from '@/lib/compliance'
 import { cn, createId } from '@/lib/utils'
@@ -48,6 +50,7 @@ export function ChecklistRunModal({
       : {},
   )
   const [completedBy, setCompletedBy] = useState(existing?.completedBy ?? activeStaffId)
+  const manager = useIsManager()
   const [runNotes, setRunNotes] = useState(existing?.notes ?? '')
   const [submitted, setSubmitted] = useState(false)
 
@@ -231,20 +234,19 @@ export function ChecklistRunModal({
 
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Completed by" required htmlFor="checklist-staff">
-            <Select
-              id="checklist-staff"
-              value={completedBy}
-              disabled={readOnly}
-              onChange={(event) => setCompletedBy(event.target.value)}
-            >
-              {data.staff
-                .filter((person) => person.active)
-                .map((person) => (
-                  <option key={person.id} value={person.id}>
-                    {person.name}
-                  </option>
-                ))}
-            </Select>
+            {manager && !readOnly ? (
+              <Select id="checklist-staff" value={completedBy} onChange={(event) => setCompletedBy(event.target.value)}>
+                {data.staff
+                  .filter((person) => person.active)
+                  .map((person) => (
+                    <option key={person.id} value={person.id}>
+                      {person.name}
+                    </option>
+                  ))}
+              </Select>
+            ) : (
+              <TextInput id="checklist-staff" readOnly value={staffName(data, completedBy)} />
+            )}
           </Field>
         </div>
 

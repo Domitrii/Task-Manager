@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Check, CircleAlert, RefreshCw, UserRound } from 'lucide-react'
+import { Check, CircleAlert, LockKeyhole, RefreshCw, UserRound } from 'lucide-react'
 import { staffRoleLabel } from '@/data/staffRoles'
 import type { SyncStatus } from '@/data/supabaseRepository'
 import { useStore } from '@/data/store'
@@ -9,6 +9,9 @@ import { cn } from '@/lib/utils'
 import { Avatar } from '@/components/ui/Avatar'
 import { Menu, MenuDivider, MenuItem, MenuLabel } from '@/components/ui/Menu'
 import { SignOutModal } from '@/features/account/AccountCard'
+import { PinDialog } from '@/features/account/SharedDevice'
+import { useSharedLock } from '@/features/account/sharedDeviceState'
+import type { StaffMember } from '@/data/types'
 import { useSync } from '@/features/account/sync'
 
 type SyncTone = 'pass' | 'warn' | 'fail'
@@ -71,6 +74,10 @@ export function ProfileMenu() {
   const sync = useSync()
   const navigate = useNavigate()
   const [signingOut, setSigningOut] = useState(false)
+  const [switchingTo, setSwitchingTo] = useState<StaffMember | null>(null)
+  const shared = useSharedLock()
+  // Passing the device round: anyone on a device-only venue; with a PIN on a shared kitchen device.
+  const canSwitch = !sync || shared.active
 
   const status = sync ? syncSummary(sync.status) : null
   const go = (to: string, close: () => void) => {
@@ -87,7 +94,7 @@ export function ProfileMenu() {
           <button
             type="button"
             onClick={toggle}
-            aria-label={sync ? `Signed in as ${activeStaff.name}` : `Signed in as ${activeStaff.name}. Switch person`}
+            aria-label={canSwitch ? `Signed in as ${activeStaff.name}. Switch person` : `Signed in as ${activeStaff.name}`}
             className="flex items-center gap-2.5 rounded-full"
           >
             <SyncAvatar tone={status?.tone ?? null} />
@@ -116,19 +123,22 @@ export function ProfileMenu() {
               </button>
             ) : null}
 
-            {/* Signed in, everyone is on their own account; only a device-only venue passes the device round. */}
-            {sync ? null : (
+            {/* Signed in, everyone is on their own account; a device-only venue or a shared kitchen device passes the device round. */}
+            {canSwitch ? (
               <>
                 <MenuLabel>Who's using this device?</MenuLabel>
                 {data.staff
-                  .filter((person) => person.active)
+                  .filter((person) => person.active && (!shared.active || person.pinHash || person.id === activeStaff.id))
                   .map((person) => (
                     <MenuItem
                       key={person.id}
                       icon={<Avatar person={person} size="xs" />}
                       onClick={() => {
-                        setActiveStaffId(person.id)
                         close()
+                        if (person.id === activeStaff.id) return
+                        // Anyone with a PIN needs it, and on a shared device everyone has one.
+                        if (person.pinHash) setSwitchingTo(person)
+                        else setActiveStaffId(person.id)
                       }}
                       description={staffRoleLabel(person)}
                     >
@@ -138,9 +148,20 @@ export function ProfileMenu() {
                       </span>
                     </MenuItem>
                   ))}
+                {shared.active ? (
+                  <MenuItem
+                    icon={<LockKeyhole className="size-4" />}
+                    onClick={() => {
+                      close()
+                      shared.lock()
+                    }}
+                  >
+                    Lock this device
+                  </MenuItem>
+                ) : null}
                 <MenuDivider />
               </>
-            )}
+            ) : null}
 
             <MenuItem onClick={() => go('/profile', close)}>Your profile</MenuItem>
             <MenuItem onClick={() => go('/team', close)}>Team</MenuItem>
@@ -160,6 +181,16 @@ export function ProfileMenu() {
       </Menu>
 
       {sync && signingOut ? <SignOutModal sync={sync} onClose={() => setSigningOut(false)} /> : null}
+      {switchingTo ? (
+        <PinDialog
+          person={switchingTo}
+          onClose={() => setSwitchingTo(null)}
+          onRight={() => {
+            setActiveStaffId(switchingTo.id)
+            setSwitchingTo(null)
+          }}
+        />
+      ) : null}
     </>
   )
 }

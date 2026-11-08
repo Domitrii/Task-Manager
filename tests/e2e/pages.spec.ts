@@ -36,6 +36,7 @@ const PAGES = [
   '/settings/manage',
   '/settings/account',
   '/settings/notifications',
+  '/settings/device',
   '/settings/thresholds',
   '/settings/sync',
   '/settings/help',

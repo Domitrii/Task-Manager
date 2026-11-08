@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/Button'
 import { Field, TextInput } from '@/components/ui/Field'
 import { useToast } from '@/components/ui/Toast'
 import { FocusFrame, FocusHeading } from '@/components/layout/FocusFrame'
-import { authErrorMessage } from './sync'
+import { authErrorMessage, MIN_PASSWORD, passwordProblem } from './sync'
 
 const INPUT = 'h-12 text-base'
 
@@ -30,10 +30,11 @@ export function NewPasswordPage({
   const [expired, setExpired] = useState(false)
 
   const mismatch = repeat.length > 0 && repeat !== password
+  const problem = password.length > 0 ? passwordProblem(password) : null
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (busy || mismatch) return
+    if (busy || mismatch || passwordProblem(password)) return
     setBusy(true)
     setError(null)
     const { data, error: failure } = await client.auth.updateUser({ password })
@@ -73,7 +74,7 @@ export function NewPasswordPage({
           type="submit"
           variant="primary"
           size="lg"
-          disabled={busy || !password || password !== repeat}
+          disabled={busy || !password || password !== repeat || problem !== null}
           className="w-full sm:w-auto sm:min-w-44"
         >
           {busy ? 'Saving…' : 'Save password'}
@@ -82,7 +83,12 @@ export function NewPasswordPage({
     >
       <FocusHeading title="Choose a new password" description="You’ll use it to sign in on every device." />
       <div className="space-y-5">
-        <Field label="New password" htmlFor="new-password" hint="At least 6 characters.">
+        <Field
+          label="New password"
+          htmlFor="new-password"
+          hint={`At least ${MIN_PASSWORD} characters.`}
+          error={problem ?? undefined}
+        >
           <TextInput
             id="new-password"
             type="password"

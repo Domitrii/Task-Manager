@@ -82,7 +82,30 @@ export function minutesBetween(from: string, to: Date | string): number {
   return differenceInMinutes(typeof to === 'string' ? parseISO(to) : to, parseISO(from))
 }
 
-export const shiftHours = (shift: Pick<Shift, 'startTime' | 'endTime'>) => `${shift.startTime}–${shift.endTime}`
+/** "08:00–16:00", or for an extra shift still going, "From 10:12". */
+export function shiftHours(shift: Pick<Shift, 'startTime' | 'endTime'> & Partial<Pick<Shift, 'unscheduled' | 'clockedOutAt'>>): string {
+  if (shift.unscheduled && !shift.clockedOutAt) return `From ${shift.startTime}`
+  return `${shift.startTime}–${shift.endTime}`
+}
+
+/** An extra shift's end on the grid: where the clock is now, until they clock out. At least a quarter of an hour, so it shows. */
+export function drawnShift(shift: Shift, now: Date): Shift {
+  if (!shift.unscheduled || shift.clockedOutAt || !shift.clockedInAt) return shift
+  const since = Math.max(15, differenceInMinutes(now, parseISO(shift.clockedInAt)))
+  return { ...shift, endTime: toClockTime(toMinutes(shift.startTime) + since) }
+}
+
+/** Everyone on the clock right now, longest-serving first. */
+export function selectClockedIn(data: AppData): Shift[] {
+  return data.shifts
+    .filter((shift) => shiftState(shift) === 'clocked-in')
+    .sort((a, b) => (a.clockedInAt ?? '').localeCompare(b.clockedInAt ?? ''))
+}
+
+/** Whether someone is on the clock, on any shift. */
+export function isClockedIn(data: AppData, staffId: ID): boolean {
+  return data.shifts.some((shift) => shift.staffId === staffId && shiftState(shift) === 'clocked-in')
+}
 
 export function shiftsFor(data: AppData, staffId: ID): Shift[] {
   return data.shifts.filter((shift) => shift.staffId === staffId)

@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { AlertTriangle, CalendarClock, ClipboardList, FileText, PackageX, Repeat, Thermometer, Truck, User } from 'lucide-react'
+import { enteredNote } from '@/data/attribution'
 import { staffName } from '@/data/selectors'
 import { useStore } from '@/data/store'
 import type { Delivery } from '@/data/types'
@@ -76,7 +77,13 @@ export function DeliveryDetailModal({
         </div>
 
         <dl className="grid gap-3 sm:grid-cols-2">
-          <DetailRow icon={<User className="size-4" />} label="Checked by" value={staffName(data, delivery.checkedBy)} />
+          <DetailRow
+            icon={<User className="size-4" />}
+            label="Checked by"
+            value={[staffName(data, delivery.checkedBy), enteredNote(data, delivery, delivery.checkedBy, delivery.receivedAt)]
+              .filter(Boolean)
+              .join(' · ')}
+          />
           <DetailRow icon={<Truck className="size-4" />} label="Driver" value={delivery.driverName ?? '—'} />
           <DetailRow icon={<FileText className="size-4" />} label="Delivery note" value={delivery.deliveryNote ?? '—'} />
           <DetailRow

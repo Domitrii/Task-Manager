@@ -24,6 +24,22 @@
   --shadow-card: 0 1px 2px 0 rgb(72 44 28 / 0.04), 0 2px 6px 0 rgb(72 44 28 / 0.05);
   --shadow-raised: 0 4px 12px -2px rgb(72 44 28 / 0.1), 0 2px 6px -2px rgb(72 44 28 / 0.06);
   --shadow-overlay: 0 24px 48px -12px rgb(72 44 28 / 0.28);
+
+  /*
+   * What's drawn over what, bottom to top. Each page draws inside a layer of its
+   * own (`main` is isolated in AppShell), so nothing on a page, however high its
+   * own z-index, can cover the bars around it. Inside a page, a pinned action bar
+   * sits over the page's content, and parts with their own sticky layers (the
+   * week grid, the check matrix) are isolated too. Use these, not numbers.
+   */
+  --layer-pinned: 20; /* a page's action bar, over the page (inside the page's layer) */
+  --layer-nav: 30; /* the tab bar along the bottom on phones */
+  --layer-header: 40; /* the band across the top, over the tab bar so its menu can reach down past it */
+  --layer-modal: 50; /* dialogs and sheets */
+  --layer-popover: 52; /* menus: over any page or dialog they open from */
+  --layer-lock: 55; /* a shared kitchen device's lock screen, over anything left open */
+  --layer-toast: 60;
+  --layer-palette: 70; /* search, opened over everything */
 }
 
 .dark {
@@ -183,6 +199,12 @@
 @media print {
   @page {
     margin: 10mm;
+  }
+
+  /* Pages printed as they are, like the inspection pack, print on white. */
+  html,
+  body {
+    background: #fff;
   }
 
   html:has(.print-sheet),

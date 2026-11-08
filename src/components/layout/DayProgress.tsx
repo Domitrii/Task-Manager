@@ -43,7 +43,7 @@ export function DayProgressBar({ own }: { own: HeaderProgress | null }) {
     .map((person) => `${staffMember(data, person.staffId)?.name ?? 'Not recorded'} ${person.count}`)
     .join(', ')
   const label =
-    own?.label ?? (progress.done === progress.total ? 'All tasks complete' : `${progress.done} of ${progress.total} tasks`)
+    own?.label ?? (progress.done === progress.total ? 'All tasks complete' : `${progress.done} of ${progress.total} done today`)
   const share = own ? percent(own.done, own.total) : percent(progress.done, progress.total)
 
   return (

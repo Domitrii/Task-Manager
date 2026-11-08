@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { addDays } from 'date-fns'
 import { AlertTriangle, CalendarClock, ChevronRight, ClipboardList, Lock, Plus, Settings2, Truck } from 'lucide-react'
@@ -9,7 +9,8 @@ import {
   type SupplierOrderBook,
 } from '@/data/selectors'
 import { useStore } from '@/data/store'
-import type { ID, Supplier, SupplierOrder } from '@/data/types'
+import { restockFrom } from '@/data/restock'
+import type { ID, Supplier, SupplierOrder, SupplierOrderLine } from '@/data/types'
 import { orderState, toISODate } from '@/lib/compliance'
 import { formatWeekdayDate } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
@@ -33,7 +34,13 @@ import { OrderHistoryList, OrderHistoryModal } from './OrderHistory'
 const HISTORY_ON_CARD = 3
 
 type Sheet =
-  | { type: 'form'; supplierId?: ID; existing?: SupplierOrder; repeatOf?: SupplierOrder }
+  | {
+      type: 'form'
+      supplierId?: ID
+      existing?: SupplierOrder
+      repeatOf?: SupplierOrder
+      startWith?: Array<Omit<SupplierOrderLine, 'id'>>
+    }
   | { type: 'history'; supplierId: ID }
   | { type: 'cancel'; order: SupplierOrder }
 
@@ -48,8 +55,26 @@ export function SuppliersPage() {
   const { data } = useStore()
   const manager = useIsManager()
   const [searchParams, setSearchParams] = useSearchParams()
-  const [sheet, setSheet] = useState<Sheet | null>(null)
+  // Arriving from low stock (`?restock=`), a manager finds the order started for them.
+  const [sheet, setSheet] = useState<Sheet | null>(() => {
+    const restock = searchParams.get('restock')
+    const order = manager && restock ? restockFrom(data, restock.split(',')) : null
+    return order ? { type: 'form', ...order } : null
+  })
   const close = useCallback(() => setSheet(null), [])
+
+  // Once read, it's taken out of the address, so going back doesn't start another.
+  useEffect(() => {
+    if (!searchParams.has('restock')) return
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current)
+        next.delete('restock')
+        return next
+      },
+      { replace: true },
+    )
+  }, [searchParams, setSearchParams])
 
   // In the address, so a delivery can link to the order it came from.
   const selectedId = searchParams.get('order') ?? undefined
@@ -265,6 +290,7 @@ export function SuppliersPage() {
           supplierId={sheet.supplierId}
           existing={sheet.existing}
           repeatOf={sheet.repeatOf}
+          startWith={sheet.startWith}
           onClose={close}
         />
       ) : null}

@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { format } from 'date-fns'
 import { AlertTriangle, CheckCircle2, MapPin, Pencil, Plus, PowerOff, ScanLine, X } from 'lucide-react'
 import { CATEGORY_ICONS, CATEGORY_LABELS } from '@/config/navigation'
+import { enteredNote } from '@/data/attribution'
 import { staffName } from '@/data/selectors'
 import { useStore } from '@/data/store'
 import type { MonitoredItem, TemperatureLog } from '@/data/types'
@@ -14,7 +15,7 @@ import { Button, ButtonLink } from '@/components/ui/Button'
 import { Field, Select, Textarea } from '@/components/ui/Field'
 import { FocusFrame } from '@/components/layout/FocusFrame'
 import { LogoMark } from '@/components/layout/Logo'
-import { canEditReading, editableUntil, useReadingAccess } from '@/features/temperatures/access'
+import { canEditReading, editableUntil, useIsManager, useReadingAccess } from '@/features/temperatures/access'
 import { EditReadingModal } from '@/features/temperatures/EditReadingModal'
 import { readingValue, startsNegative } from '@/features/temperatures/reading'
 import { CorrectiveActionField, ReadingInput, VerdictBanner } from '@/features/temperatures/ReadingFields'
@@ -64,6 +65,7 @@ function ScanLogger({ item }: { item: MonitoredItem }) {
   const [notes, setNotes] = useState('')
   const [showNotes, setShowNotes] = useState(false)
   const [staffId, setStaffId] = useState(activeStaffId)
+  const manager = useIsManager()
   const [changingStaff, setChangingStaff] = useState(false)
   const [photo, setPhoto] = useState<Blob | null>(null)
   const [submitted, setSubmitted] = useState(false)
@@ -212,13 +214,15 @@ function ScanLogger({ item }: { item: MonitoredItem }) {
           ) : (
             <p className="text-ink-muted flex items-center gap-x-1 text-sm">
               Checked by <span className="text-ink font-medium">{staffName(data, staffId)}</span>
-              <button
-                type="button"
-                onClick={() => setChangingStaff(true)}
-                className="text-brand-700 dark:text-brand-300 -my-2 ml-auto py-2 pl-3 font-semibold hover:underline"
-              >
-                Change
-              </button>
+              {manager ? (
+                <button
+                  type="button"
+                  onClick={() => setChangingStaff(true)}
+                  className="text-brand-700 dark:text-brand-300 -my-2 ml-auto py-2 pl-3 font-semibold hover:underline"
+                >
+                  Change
+                </button>
+              ) : null}
             </p>
           )}
         </div>
@@ -341,7 +345,10 @@ function SavedReading({
         <Detail label="Item">{item.name}</Detail>
         <Detail label="Check">{check}</Detail>
         <Detail label="Time">{formatTime(log.recordedAt)}</Detail>
-        <Detail label="Checked by">{staffName(data, log.recordedBy)}</Detail>
+        <Detail label="Checked by">
+          {staffName(data, log.recordedBy)}
+          {enteredNote(data, log, log.recordedBy, log.recordedAt) ? ` (${enteredNote(data, log, log.recordedBy, log.recordedAt)})` : ''}
+        </Detail>
         {log.correctiveAction ? <Detail label="Action taken">{log.correctiveAction}</Detail> : null}
         <Detail label="Photo">
           <ReadingPhoto log={log} size="lg" />

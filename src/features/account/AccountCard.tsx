@@ -1,11 +1,12 @@
 import { useState, type FormEvent } from 'react'
+import { AuthError } from '@supabase/supabase-js'
 import { LogOut, RefreshCw, TriangleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Card, CardBody, CardHeader } from '@/components/ui/Card'
 import { Field, TextInput } from '@/components/ui/Field'
 import { Modal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
-import { describeStatus, useSync, type SyncApi } from './sync'
+import { authErrorMessage, describeStatus, useSync, type SyncApi } from './sync'
 
 /** Settings → Data. Renders nothing when the app runs device-only. */
 export function AccountCard() {
@@ -107,8 +108,18 @@ function SignInAgainModal({ sync, onClose }: { sync: SyncApi; onClose: () => voi
   )
 }
 
-export function SignOutModal({ sync, onClose }: { sync: SyncApi; onClose: () => void }) {
+export function SignOutModal({
+  sync,
+  onClose,
+  everywhere = false,
+}: {
+  sync: SyncApi
+  onClose: () => void
+  /** Every device the account is signed in on, not just this one. */
+  everywhere?: boolean
+}) {
   const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const { pending } = sync.status
 
   return (
@@ -117,11 +128,21 @@ export function SignOutModal({ sync, onClose }: { sync: SyncApi; onClose: () => 
       onClose={onClose}
       variant="alert"
       icon={<TriangleAlert className="size-5" />}
-      title="Sign out?"
+      title={everywhere ? 'Sign out everywhere?' : 'Sign out?'}
       description={
-        pending > 0
-          ? `${pending} ${pending === 1 ? 'record hasn’t' : 'records haven’t'} synced yet. Signing out now deletes ${pending === 1 ? 'it' : 'them'} for good. Connect to the internet and wait for sync to finish to keep ${pending === 1 ? 'it' : 'them'}.`
-          : 'You’ll need to sign in again to use Mise.'
+        <>
+          {everywhere
+            ? 'Every phone, tablet and computer signed in as you is signed out, this one too, within an hour at most. Use this if a device is lost or someone else knows your password. '
+            : ''}
+          {pending > 0
+            ? `${pending} ${pending === 1 ? 'record hasn’t' : 'records haven’t'} synced yet. Signing out now deletes ${pending === 1 ? 'it' : 'them'} for good. Connect to the internet and wait for sync to finish to keep ${pending === 1 ? 'it' : 'them'}.`
+            : 'You’ll need to sign in again to use Mise.'}
+          {error ? (
+            <span role="alert" className="text-fail-600 dark:text-fail-500 mt-2 block">
+              {error}
+            </span>
+          ) : null}
+        </>
       }
       footer={
         <>
@@ -131,10 +152,16 @@ export function SignOutModal({ sync, onClose }: { sync: SyncApi; onClose: () => 
             disabled={busy}
             onClick={async () => {
               setBusy(true)
-              await sync.signOut()
+              setError(null)
+              try {
+                await (everywhere ? sync.signOutEverywhere() : sync.signOut())
+              } catch (failure) {
+                setBusy(false)
+                setError(failure instanceof AuthError ? authErrorMessage(failure) : 'You’re offline. This needs a connection.')
+              }
             }}
           >
-            {pending > 0 ? 'Sign out and discard' : 'Sign out'}
+            {pending > 0 ? 'Sign out and discard' : everywhere ? 'Sign out everywhere' : 'Sign out'}
           </Button>
         </>
       }

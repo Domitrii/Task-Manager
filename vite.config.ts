@@ -17,8 +17,10 @@ export default defineConfig({
       registerType: 'autoUpdate',
       manifest: false,
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,woff2}'],
+        globPatterns: ['**/*.{js,css,html,svg,png,webmanifest,woff2}'],
         navigateFallback: '/index.html',
+        // Reminders pushed while Mise is closed, and what tapping a notification does.
+        importScripts: ['sw-notifications.js'],
         runtimeCaching: [
           {
             urlPattern: ({ url }) =>

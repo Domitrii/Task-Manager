@@ -17,12 +17,13 @@ import { toISODate } from '@/lib/compliance'
 import { useNow } from '@/lib/useNow'
 import { cn } from '@/lib/utils'
 import { Banner } from '@/components/ui/Banner'
-import { Button, IconButton } from '@/components/ui/Button'
+import { Button, ButtonLink, IconButton } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { ChipTabs } from '@/components/ui/Tabs'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { useIsManager } from '@/features/temperatures/access'
 import { AddUnavailabilityModal } from './AddUnavailabilityModal'
+import { ClockedInNow } from './ClockedInNow'
 import { ClockBar, ClockStatusCard, longDate, ShiftCard, UnavailabilityCard, useClockOffline } from './parts'
 import { ShiftFormModal, type ShiftDraft } from './ShiftFormModal'
 import { WeekSchedule } from './WeekSchedule'
@@ -87,7 +88,15 @@ export function CalendarPage() {
 
   return (
     <div className="space-y-3.5 pb-24 lg:pb-0">
-      <PageHeader title="Calendar" onBack={() => navigate('/')} />
+      <PageHeader
+        title="Calendar"
+        onBack={() => navigate('/')}
+        actions={
+          <ButtonLink to="/calendar/hours" size="sm">
+            {manager ? 'Hours' : 'Your hours'}
+          </ButtonLink>
+        }
+      />
 
       {notice ? <Banner tone="pass" title={NOTICES[notice]} /> : null}
       {offline ? (
@@ -95,6 +104,8 @@ export function CalendarPage() {
           Cached shifts are available to view. Reconnect to use clock actions.
         </Banner>
       ) : null}
+
+      {manager ? <ClockedInNow now={now} /> : null}
 
       <ChipTabs
         stretch

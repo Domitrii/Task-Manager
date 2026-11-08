@@ -602,16 +602,10 @@ function StaffModal({ member, onClose }: { member?: StaffMember; onClose: () => 
             />
           </Field>
         ) : null}
-        <Field label="Sign-off PIN" hint="Optional — 4 digits" htmlFor="staff-pin">
-          <TextInput
-            id="staff-pin"
-            inputMode="numeric"
-            maxLength={4}
-            className="tabular"
-            value={draft.pin ?? ''}
-            onChange={(event) => setDraft({ ...draft, pin: event.target.value || undefined })}
-          />
-        </Field>
+        <p className="text-ink-muted text-[13px]">
+          Kitchen PIN: {draft.pinHash ? 'set' : 'not set'}. PINs are set in Settings → Shared kitchen device, and
+          never shown.
+        </p>
         <Checkbox
           label="Active"
           description="Inactive people no longer appear in the sign-off lists"

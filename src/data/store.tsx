@@ -17,13 +17,14 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { deriveDeliveryStatus, evaluateTemperature, periodForTime } from '@/lib/compliance'
+import { format } from 'date-fns'
+import { deriveDeliveryStatus, evaluateTemperature, periodForTime, toISODate } from '@/lib/compliance'
 import { createId, initialsOf } from '@/lib/utils'
 import { applyChanges, EMPTY_DATA, type RecordChange } from './records'
 import type { DataRepository } from './repository'
-import { canClockIn, closeBreaks, onBreak, shiftState } from './shifts'
+import { canClockIn, closeBreaks, isClockedIn, onBreak, shiftState, toClockTime, toMinutes } from './shifts'
 import { colorForNewcomer, staffColors } from './staffColors'
-import { staffRoleFromText } from './staffRoles'
+import { staffRoleFromText, staffRoleLabel } from './staffRoles'
 import { nextOccurrence } from './tasks'
 import type {
   AppData,
@@ -269,8 +270,17 @@ interface StoreValue {
   hasData: boolean
   /** Staff member currently signed in on this device: in a synced team, always the signed-in person. */
   activeStaffId: ID
-  /** Device-only use: who's holding the device. A synced team ignores it. */
+  /**
+   * Who's holding the device: anyone, on a device-only venue; on a shared kitchen
+   * device, whoever unlocked it with their PIN. Otherwise a synced team ignores it.
+   */
   setActiveStaffId: (id: ID) => void
+  /**
+   * A tablet that stays in the kitchen, signed in as a manager, which people
+   * take over with their PIN. Kept per device.
+   */
+  sharedDevice: boolean
+  setSharedDevice: (on: boolean) => void
   activeStaff: StaffMember
   /** Everyone's colour on avatars and the day's progress bar; see `staffColors.ts`. */
   staffColors: Map<ID, number>
@@ -312,10 +322,16 @@ interface StoreValue {
   deleteShift: (id: ID) => void
   /** Does nothing before the shift's start time: nobody can start early. */
   clockIn: (id: ID) => void
+  /** Clocks in with no shift on the schedule, starting an extra one now. Nothing if they're already clocked in. */
+  clockInWithoutShift: () => void
   startBreak: (id: ID) => void
   endBreak: (id: ID) => void
-  /** Ends the shift whenever they like, closing any break still running. */
-  clockOut: (id: ID) => void
+  /**
+   * Ends the shift, now or (for a manager clocking someone out) when they
+   * actually left, closing any break still running. Says who did it, when that
+   * isn't the person on the shift.
+   */
+  clockOut: (id: ID, at?: Date) => void
   saveUnavailability: (entry: Omit<Unavailability, 'id' | 'createdAt'>) => void
   deleteUnavailability: (id: ID) => void
   saveInvitation: (invitation: Pick<Invitation, 'email' | 'role'>) => void
@@ -369,6 +385,24 @@ function keepAccounts(next: AppData, current: StaffMember[], person: SignedInPer
 }
 
 const ACTIVE_STAFF_KEY = 'mise.activeStaff'
+const SHARED_DEVICE_KEY = 'mise.sharedDevice'
+
+function readFlag(key: string): boolean {
+  try {
+    return localStorage.getItem(key) === 'true'
+  } catch {
+    return false
+  }
+}
+
+function writeFlag(key: string, on: boolean) {
+  try {
+    if (on) localStorage.setItem(key, 'true')
+    else localStorage.removeItem(key)
+  } catch {
+    // Storage blocked: it lasts until the page is closed.
+  }
+}
 
 export function StoreProvider({
   repository,
@@ -384,6 +418,7 @@ export function StoreProvider({
   const [ready, setReady] = useState(false)
   const [hasData, setHasData] = useState(false)
   const [activeStaffId, setActiveStaffIdState] = useState<ID>('')
+  const [sharedDevice, setSharedDeviceState] = useState(() => readFlag(SHARED_DEVICE_KEY))
 
   /** Swaps in a whole dataset, keeping this device's signed-in person if they still exist. */
   const applyData = useCallback((next: AppData) => {
@@ -464,14 +499,28 @@ export function StoreProvider({
     localStorage.setItem(ACTIVE_STAFF_KEY, id)
   }, [])
 
+  // Whoever turns it on is holding the tablet, until someone else unlocks it.
+  const signedInStaffId = userId ? (data.staff.find((member) => member.userId === userId)?.id ?? staffIdFor(userId)) : ''
+  const setSharedDevice = useCallback(
+    (on: boolean) => {
+      setSharedDeviceState(on)
+      writeFlag(SHARED_DEVICE_KEY, on)
+      if (on && signedInStaffId) setActiveStaffId(signedInStaffId)
+    },
+    [signedInStaffId, setActiveStaffId],
+  )
+
   // Its own function, so showing a photo doesn't fetch it again every time the data changes.
   const photoUrl = useCallback((path: string) => repository.photoUrl(path), [repository])
 
   const colors = useMemo(() => staffColors(data.staff), [data.staff])
 
   const value = useMemo<StoreValue>(() => {
+    // On a shared kitchen device, whoever last unlocked it with their PIN.
+    const acting = userId && sharedDevice ? data.staff.find((member) => member.id === activeStaffId && member.active) : undefined
     const activeStaff: StaffMember = userId
-      ? (data.staff.find((member) => member.userId === userId) ?? {
+      ? (acting ??
+        data.staff.find((member) => member.userId === userId) ?? {
           // Only until the effect above has added them.
           id: staffIdFor(userId),
           userId,
@@ -530,6 +579,8 @@ export function StoreProvider({
       hasData,
       activeStaffId: activeStaff.id,
       setActiveStaffId,
+      sharedDevice,
+      setSharedDevice,
       activeStaff,
       staffColors: colors,
 
@@ -601,7 +652,8 @@ export function StoreProvider({
       },
 
       saveDelivery(delivery, isNew, newSupplier) {
-        const normalised: Delivery = { ...delivery, status: deriveDeliveryStatus(delivery.lines) }
+        const entered = isNew ? { enteredBy: activeStaff.id, enteredAt: new Date().toISOString() } : {}
+        const normalised: Delivery = { ...delivery, ...entered, status: deriveDeliveryStatus(delivery.lines) }
         if (newSupplier) dispatch({ type: 'supplier/save', supplier: newSupplier })
         dispatch(isNew ? { type: 'delivery/add', delivery: normalised } : { type: 'delivery/update', delivery: normalised })
         if (isNew) raiseRejectionIssue(normalised, newSupplier)
@@ -638,6 +690,8 @@ export function StoreProvider({
         const order = data.supplierOrders.find((entry) => entry.id === orderId)
         const recorded: Delivery = {
           ...delivery,
+          enteredBy: activeStaff.id,
+          enteredAt: new Date().toISOString(),
           supplierId: order?.supplierId ?? delivery.supplierId,
           orderId,
           status: deriveDeliveryStatus(delivery.lines),
@@ -661,7 +715,8 @@ export function StoreProvider({
         return recorded
       },
 
-      recordChecklistRun(run) {
+      recordChecklistRun(input) {
+        const run: ChecklistRun = { ...input, enteredBy: activeStaff.id, enteredAt: new Date().toISOString() }
         dispatch({ type: 'checklist/run', run })
         const template = data.checklistTemplates.find((entry) => entry.id === run.templateId)
         if (!template) return
@@ -784,6 +839,26 @@ export function StoreProvider({
         }
       },
 
+      clockInWithoutShift() {
+        if (isClockedIn(data, activeStaff.id)) return
+        const now = new Date()
+        const time = format(now, 'HH:mm')
+        dispatch({
+          type: 'shift/save',
+          shift: {
+            id: createId('sh'),
+            staffId: activeStaff.id,
+            date: toISODate(now),
+            startTime: time,
+            endTime: time,
+            role: staffRoleLabel(activeStaff),
+            unscheduled: true,
+            clockedInAt: now.toISOString(),
+            createdBy: activeStaff.id,
+          },
+        })
+      },
+
       startBreak(id) {
         const shift = data.shifts.find((entry) => entry.id === id)
         if (!shift || shiftState(shift) !== 'clocked-in' || onBreak(shift)) return
@@ -796,13 +871,20 @@ export function StoreProvider({
         if (shift) dispatch({ type: 'shift/save', shift: { ...shift, breaks: closeBreaks(shift, new Date()) } })
       },
 
-      clockOut(id) {
+      clockOut(id, at = new Date()) {
         const shift = data.shifts.find((entry) => entry.id === id)
-        const now = new Date()
         if (shift && shiftState(shift) === 'clocked-in') {
+          // An extra shift ends when they clock out. The same day, at least a minute after it began, so it
+          // never reads as going on to the next day; a day later, it's an overnight shift.
+          const time = format(at, 'HH:mm')
+          const sameDay = toISODate(at) === shift.date
+          const end = shift.unscheduled
+            ? { endTime: sameDay ? toClockTime(Math.max(toMinutes(time), toMinutes(shift.startTime) + 1)) : time }
+            : {}
+          const by = activeStaff.id !== shift.staffId ? { clockedOutBy: activeStaff.id } : {}
           dispatch({
             type: 'shift/save',
-            shift: { ...shift, breaks: closeBreaks(shift, now), clockedOutAt: now.toISOString() },
+            shift: { ...shift, ...end, ...by, breaks: closeBreaks(shift, at), clockedOutAt: at.toISOString() },
           })
         }
       },
@@ -872,7 +954,9 @@ export function StoreProvider({
       },
 
       saveStaff(member) {
-        dispatch({ type: 'staff/save', member })
+        // A PIN as typed never goes back to the server; see `pinHash`.
+        const { pin: _typed, ...kept } = member
+        dispatch({ type: 'staff/save', member: kept })
       },
 
       saveSupplier(supplier) {
@@ -891,7 +975,7 @@ export function StoreProvider({
         applyData(userId ? keepAccounts(next, data.staff, { userId, name: personName }) : next)
       },
     }
-  }, [data, ready, hasData, activeStaffId, setActiveStaffId, repository, applyData, userId, personName, photoUrl, colors])
+  }, [data, ready, hasData, activeStaffId, setActiveStaffId, sharedDevice, setSharedDevice, repository, applyData, userId, personName, photoUrl, colors])
 
   return <StoreContext value={value}>{children}</StoreContext>
 }

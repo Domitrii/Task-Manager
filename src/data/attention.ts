@@ -3,11 +3,12 @@
  * work as three cards, and anything that needs someone to act.
  */
 import { differenceInCalendarDays, format, parseISO } from 'date-fns'
-import { startOfDayLocal } from '@/lib/compliance'
+import { startOfDayLocal, toISODate } from '@/lib/compliance'
 import { formatTemp, formatTime } from '@/lib/format'
 import { selectLogsForDay, selectOrdersToCheckIn, selectToday, staffName, type TodayTask } from './selectors'
+import { DEFAULT_REMINDER_TITLE, wentOffToday } from './reminders'
 import { isCurrentTask, taskState, taskWhen } from './tasks'
-import type { AppData, ID, MonitoredItem, NotificationKind, NotificationPreferences } from './types'
+import type { AppData, ID, MonitoredItem, NotificationKind, NotificationPreferences, Reminder } from './types'
 
 export type AttentionTone = 'fail' | 'warn' | 'pass' | 'neutral'
 
@@ -42,7 +43,6 @@ export interface HomeCard {
 
 const RANK: Record<AttentionTone, number> = { fail: 0, warn: 1, neutral: 2, pass: 3 }
 const byUrgency = (a: HomeEntry, b: HomeEntry) => RANK[a.tone] - RANK[b.tone]
-const needsSomeone = (entry: HomeEntry) => entry.tone === 'fail' || entry.tone === 'warn'
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`
 
 const isProbe = (item: MonitoredItem) => item.category === 'cooking' || item.category === 'cooling'
@@ -243,8 +243,6 @@ function probeCard(data: AppData, now: Date, checks: TodayTask[]): HomeCard {
 
 export interface HomeOverview {
   cards: HomeCard[]
-  /** How many things on the cards need someone. */
-  attention: number
   /** The day's current check window, if one is open. */
   period: string | null
 }
@@ -255,14 +253,14 @@ export function selectHome(data: AppData, now: Date): HomeOverview {
   const cards = [tasksCard(data, now, checks), temperaturesCard(data, now, checks), probeCard(data, now, checks)]
   return {
     cards,
-    attention: cards.flatMap((card) => card.entries).filter(needsSomeone).length,
     period: today.current?.window.label ?? null,
   }
 }
 
-export type AlertGroup = 'missed' | 'overdue' | 'soon' | 'attention'
+export type AlertGroup = 'reminder' | 'missed' | 'overdue' | 'soon' | 'attention'
 
 export const ALERT_GROUPS: Array<{ key: AlertGroup; label: string }> = [
+  { key: 'reminder', label: 'Your reminders' },
   { key: 'missed', label: 'Missed' },
   { key: 'overdue', label: 'Overdue' },
   { key: 'soon', label: 'Coming soon' },
@@ -272,7 +270,7 @@ export const ALERT_GROUPS: Array<{ key: AlertGroup; label: string }> = [
 export interface Alert {
   /** Changes with the alert's state, so something that gets worse counts as new. */
   key: string
-  kind: NotificationKind | 'always'
+  kind: NotificationKind | 'always' | 'reminder'
   group: AlertGroup
   tone: AttentionTone
   status: string
@@ -299,10 +297,12 @@ export function selectProbeCalibration(data: AppData, now: Date): { needed: bool
   return { needed: age >= CALIBRATION_DAYS, detail: `Last recorded ${format(parseISO(at), 'd MMM yyyy')}${who}` }
 }
 
-function taskAlerts(data: AppData, now: Date): Alert[] {
+/** `mine`: only tasks given to this person, or to nobody. */
+function taskAlerts(data: AppData, now: Date, mine?: ID): Alert[] {
   const today = startOfDayLocal(now)
   return data.tasks.flatMap((task): Alert[] => {
     if (task.status === 'done' || !task.dueAt) return []
+    if (mine && task.assigneeId && task.assigneeId !== mine) return []
     const due = parseISO(task.dueAt)
     const state = taskState(task, now)
     const group: AlertGroup | null = due < today ? 'missed' : state === 'overdue' ? 'overdue' : state === 'due-soon' ? 'soon' : null
@@ -385,8 +385,23 @@ function checkAlerts(data: AppData, now: Date): Alert[] {
   return alerts
 }
 
-/** Everything the bell has to say to someone, leaving out what they've turned off. */
-export function selectAlerts(data: AppData, now: Date, preferences: NotificationPreferences = {}): Alert[] {
+/** Who the bell is for: tasks are theirs, and sign-off requests only go to managers. */
+export interface AlertViewer {
+  staffId: ID
+  manager: boolean
+}
+
+/**
+ * Everything the bell has to say to someone, leaving out what they've turned
+ * off. Someone who isn't a manager hears about their own tasks and ones nobody
+ * has been given, not everyone else's; temperatures and deliveries are anyone's.
+ */
+export function selectAlerts(
+  data: AppData,
+  now: Date,
+  preferences: NotificationPreferences = {},
+  viewer?: AlertViewer,
+): Alert[] {
   const stamp = now.toISOString()
   const orders = selectOrdersToCheckIn(data, now)
   const supplier = (id: ID) => data.suppliers.find((entry) => entry.id === id)?.name ?? 'A supplier'
@@ -406,7 +421,8 @@ export function selectAlerts(data: AppData, now: Date, preferences: Notification
     }
   })
 
-  const signOffs = data.issues.filter((issue) => issue.needsSignOff).map(
+  const forManagers = !viewer || viewer.manager
+  const signOffs = data.issues.filter((issue) => issue.needsSignOff && forManagers).map(
     (issue): Alert => ({
       // A changed answer is a new request, even for a manager who read the last one.
       key: `${issue.id}:signoff:${issue.resolutionEdits?.length ?? 0}`,
@@ -422,7 +438,48 @@ export function selectAlerts(data: AppData, now: Date, preferences: Notification
     }),
   )
 
-  return [...taskAlerts(data, now), ...checkAlerts(data, now), ...orderAlerts, ...signOffs].filter(
-    (alert) => alert.kind === 'always' || preferences[alert.kind] !== false,
+  const tasks = taskAlerts(data, now, forManagers ? undefined : viewer?.staffId)
+  return [...tasks, ...checkAlerts(data, now), ...orderAlerts, ...signOffs].filter(
+    (alert) => alert.kind === 'always' || alert.kind === 'reminder' || preferences[alert.kind] !== false,
   )
+}
+
+const WAITING: Array<{ group: AlertGroup; words: string }> = [
+  { group: 'missed', words: 'missed' },
+  { group: 'overdue', words: 'overdue' },
+  { group: 'soon', words: 'coming soon' },
+  { group: 'attention', words: 'to look at' },
+]
+
+/** What's on someone's list right now, in a few words. */
+function waitingSummary(alerts: Alert[]): string {
+  const counts = WAITING.flatMap(({ group, words }) => {
+    const count = alerts.filter((alert) => alert.group === group).length
+    return count > 0 ? [`${count} ${words}`] : []
+  })
+  return counts.length > 0 ? counts.join(' · ') : 'Nothing waiting right now'
+}
+
+/** Someone's reminders that have gone off today, each saying what's waiting among `others`. */
+export function reminderAlerts(reminders: Reminder[] = [], others: Alert[], now: Date): Alert[] {
+  const detail = waitingSummary(others)
+  return reminders.flatMap((reminder): Alert[] => {
+    const at = wentOffToday(reminder, now)
+    if (!at) return []
+    return [
+      {
+        // With the time in it, moving a reminder later today lets it go off again.
+        key: `reminder:${reminder.id}:${toISODate(now)}:${reminder.time}`,
+        kind: 'reminder',
+        group: 'reminder',
+        tone: 'neutral',
+        status: `Reminder · ${reminder.time}`,
+        title: reminder.note || DEFAULT_REMINDER_TITLE,
+        detail,
+        to: '/',
+        rank: 0,
+        at: at.toISOString(),
+      },
+    ]
+  })
 }

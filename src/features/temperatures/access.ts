@@ -20,11 +20,15 @@ export interface ReadingAccess {
 /**
  * With accounts, managers are the owner and whoever the owner chooses. On a
  * single device without accounts, anyone down as a Manager on the staff list.
+ * On a shared kitchen device it's whoever unlocked it, not the account it's
+ * signed in with: a chef at the manager's tablet can do what a chef can.
  */
 export function useIsManager(): boolean {
   const sync = useSync()
-  const { activeStaff } = useStore()
-  return sync ? sync.isManager : activeStaff.role === 'manager'
+  const { activeStaff, sharedDevice } = useStore()
+  if (!sync) return activeStaff.role === 'manager'
+  if (!sharedDevice || activeStaff.userId === sync.userId) return sync.isManager
+  return Boolean(activeStaff.userId && sync.managerIds.includes(activeStaff.userId))
 }
 
 export function useReadingAccess(): ReadingAccess {

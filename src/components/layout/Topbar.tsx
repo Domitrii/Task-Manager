@@ -24,7 +24,7 @@ export function Topbar({
   const showProgress = !['/calendar', '/notifications'].some((path) => location.pathname.startsWith(path))
 
   return (
-    <header className="bg-header sticky top-0 z-30 shrink-0 pt-[env(safe-area-inset-top)] text-white">
+    <header className="bg-header sticky top-0 z-(--layer-header) shrink-0 pt-[env(safe-area-inset-top)] text-white print:hidden">
       <div className="flex h-16 items-center gap-1 px-4 sm:px-6 lg:px-8">
         <Link to="/" className="flex min-w-0 flex-1 items-center gap-2 lg:hidden" aria-label="Home">
           <LogoMark inverse className="size-7 rounded-md" />

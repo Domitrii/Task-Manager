@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { format } from 'date-fns'
 import { CheckCircle2, ClipboardCheck, ClipboardList, Clock } from 'lucide-react'
+import { enteredNote } from '@/data/attribution'
 import { selectChecklistStatus, staffName } from '@/data/selectors'
 import { useStore } from '@/data/store'
 import type { ChecklistRun, ChecklistTemplate, ChecklistType } from '@/data/types'
@@ -129,7 +130,12 @@ export function ChecklistSection({
                 />
                 <p className="text-ink-muted mt-2 text-xs">
                   {entry.run
-                    ? `Signed off at ${formatTime(entry.run.completedAt)} by ${staffName(data, entry.run.completedBy)}`
+                    ? [
+                        `Signed off at ${formatTime(entry.run.completedAt)} by ${staffName(data, entry.run.completedBy)}`,
+                        enteredNote(data, entry.run, entry.run.completedBy, entry.run.completedAt),
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')
                     : 'Not started today'}
                 </p>
               </div>
@@ -178,6 +184,7 @@ export function ChecklistSection({
                       <p className="text-ink-muted truncate text-xs">
                         {formatDate(run.date)} · {formatRelativeDay(run.completedAt)} ·{' '}
                         {staffName(data, run.completedBy)}
+                        {enteredNote(data, run, run.completedBy, run.completedAt) ? ` · ${enteredNote(data, run, run.completedBy, run.completedAt)}` : ''}
                       </p>
                     </div>
                     {failed > 0 ? (

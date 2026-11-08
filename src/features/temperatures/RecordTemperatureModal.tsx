@@ -4,6 +4,7 @@ import { ChevronLeft, Plus, Search } from 'lucide-react'
 import { CATEGORY_ICONS, CATEGORY_LABELS } from '@/config/navigation'
 import { selectActionableReadings, staffName } from '@/data/selectors'
 import { useStore } from '@/data/store'
+import { useIsManager } from './access'
 import type { MonitoredCategory, MonitoredItem } from '@/data/types'
 import { evaluateTemperature, formatRange, periodForTime, type CheckSlot } from '@/lib/compliance'
 import { formatAgo, formatTemp } from '@/lib/format'
@@ -55,6 +56,7 @@ export function RecordTemperatureModal({
   // Empty means "the moment it is saved", so a sheet left open doesn't stamp an old time.
   const [recordedAt, setRecordedAt] = useState('')
   const [staffId, setStaffId] = useState(activeStaffId)
+  const manager = useIsManager()
   const [showDetails, setShowDetails] = useState(false)
   const [correctiveAction, setCorrectiveAction] = useState('')
   const [notes, setNotes] = useState('')
@@ -273,13 +275,16 @@ export function RecordTemperatureModal({
               <p className="text-ink-muted flex flex-wrap items-center gap-x-1 text-sm">
                 Checked by <span className="text-ink font-medium">{staffName(data, staffId)}</span>
                 {recordedAt ? `at ${format(new Date(recordedAt), 'HH:mm, d MMM')}` : 'just now'}
-                <button
-                  type="button"
-                  onClick={() => setShowDetails(true)}
-                  className="text-brand-700 dark:text-brand-300 ml-auto font-semibold hover:underline"
-                >
-                  Change
-                </button>
+                {/* Only a manager can put a reading in someone else's name, or at an earlier time. */}
+                {manager ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowDetails(true)}
+                    className="text-brand-700 dark:text-brand-300 ml-auto font-semibold hover:underline"
+                  >
+                    Change
+                  </button>
+                ) : null}
               </p>
             ) : (
               <div className="grid gap-4 sm:grid-cols-2">

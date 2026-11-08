@@ -40,6 +40,17 @@ export interface SyncApi {
   isManager: boolean
   /** Makes someone a manager, or stops them being one. Owners only. */
   setManager: (userId: string, allowed: boolean) => Promise<void>
+  /** The account signed in on this device. */
+  userId: string
+  /**
+   * The accounts that are managers (the owner included), for a shared kitchen
+   * device, where what someone may do follows whoever is at it. As last known.
+   */
+  managerIds: string[]
+  /** Takes someone out of the team. Their records stay. The owner can take anyone; a manager, anyone who isn't one. */
+  removeMember: (userId: string) => Promise<void>
+  /** Signs this account out of every device, this one included. Needs a connection. */
+  signOutEverywhere: () => Promise<void>
   /** Deletes this person's account for good; the team and its records stay. Needs a connection. */
   deleteAccount: () => Promise<void>
 }
@@ -63,6 +74,25 @@ export async function saveProfileName(client: SupabaseClient, name: string): Pro
   return error ? authErrorMessage(error) : null
 }
 
+/** The shortest password Mise accepts. Set the same in Supabase (Authentication → Providers → Email). */
+export const MIN_PASSWORD = 8
+
+/** The passwords people reach for first, and the first guesses anyone would try. */
+const COMMON_PASSWORDS = new Set([
+  'password', 'password1', 'password123', '12345678', '123456789', '1234567890', '87654321', '11111111',
+  'qwertyuiop', 'qwerty123', 'iloveyou', 'abcd1234', 'letmein1', 'welcome1', 'changeme', 'kitchen1',
+  'restaurant', 'passw0rd', '00000000', 'football',
+])
+
+/** What's wrong with a new password, or null when it will do. */
+export function passwordProblem(password: string): string | null {
+  if (password.length < MIN_PASSWORD) return `Use at least ${MIN_PASSWORD} characters.`
+  if (COMMON_PASSWORDS.has(password.toLowerCase()) || /^(.)\1+$/.test(password)) {
+    return 'That one is too easy to guess. Try a few words together.'
+  }
+  return null
+}
+
 export function authErrorMessage(error: AuthError): string {
   if (isAuthRetryableFetchError(error)) return 'You’re offline. Signing in needs a connection.'
   switch (error.code) {
@@ -76,7 +106,7 @@ export function authErrorMessage(error: AuthError): string {
     case 'same_password':
       return 'That’s the password you have now. Choose a different one.'
     case 'weak_password':
-      return 'Choose a longer password: at least 6 characters.'
+      return `Choose a longer password: at least ${MIN_PASSWORD} characters.`
     case 'email_address_invalid':
     case 'validation_failed':
       return 'That email address doesn’t look right.'

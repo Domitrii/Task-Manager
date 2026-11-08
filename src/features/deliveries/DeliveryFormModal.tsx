@@ -3,7 +3,9 @@ import { useNavigate } from 'react-router-dom'
 import { format } from 'date-fns'
 import { AlertTriangle, ClipboardList, Plus, Trash2 } from 'lucide-react'
 import { selectOrdersToCheckIn } from '@/data/selectors'
+import { staffName } from '@/data/selectors'
 import { useStore } from '@/data/store'
+import { useIsManager } from '@/features/temperatures/access'
 import type { Delivery, DeliveryLine, DeliveryLineCategory, Supplier } from '@/data/types'
 import { deliveryLineConcern, deliveryTempLimit, deriveDeliveryStatus } from '@/lib/compliance'
 import { cn, createId } from '@/lib/utils'
@@ -79,6 +81,7 @@ export function DeliveryFormModal({
     toLocalInputValue(existing ? new Date(existing.receivedAt) : new Date()),
   )
   const [checkedBy, setCheckedBy] = useState(existing?.checkedBy ?? activeStaffId)
+  const manager = useIsManager()
   const [deliveryNote, setDeliveryNote] = useState(existing?.deliveryNote ?? '')
   const [driverName, setDriverName] = useState(existing?.driverName ?? repeatOf?.driverName ?? '')
   const [vehicleTempOk, setVehicleTempOk] = useState(existing?.vehicleTempOk ?? true)
@@ -128,8 +131,9 @@ export function DeliveryFormModal({
       ...existing,
       id: existing?.id ?? createId('dv'),
       supplierId: supplier.id,
-      receivedAt: new Date(receivedAt).toISOString(),
-      checkedBy,
+      // Only a manager can say it came earlier, or was checked by someone else.
+      receivedAt: manager ? new Date(receivedAt).toISOString() : (existing?.receivedAt ?? new Date().toISOString()),
+      checkedBy: manager ? checkedBy : (existing?.checkedBy ?? activeStaffId),
       status,
       lines,
       deliveryNote: deliveryNote.trim() || undefined,
@@ -218,25 +222,26 @@ export function DeliveryFormModal({
               id="delivery-at"
               type="datetime-local"
               value={receivedAt}
+              readOnly={!manager}
               max={toLocalInputValue(new Date())}
               onChange={(event) => setReceivedAt(event.target.value)}
             />
           </Field>
 
           <Field label="Checked by" required htmlFor="delivery-staff">
-            <Select
-              id="delivery-staff"
-              value={checkedBy}
-              onChange={(event) => setCheckedBy(event.target.value)}
-            >
-              {data.staff
-                .filter((person) => person.active)
-                .map((person) => (
-                  <option key={person.id} value={person.id}>
-                    {person.name}
-                  </option>
-                ))}
-            </Select>
+            {manager ? (
+              <Select id="delivery-staff" value={checkedBy} onChange={(event) => setCheckedBy(event.target.value)}>
+                {data.staff
+                  .filter((person) => person.active)
+                  .map((person) => (
+                    <option key={person.id} value={person.id}>
+                      {person.name}
+                    </option>
+                  ))}
+              </Select>
+            ) : (
+              <TextInput id="delivery-staff" readOnly value={staffName(data, checkedBy)} />
+            )}
           </Field>
 
           <Field label="Delivery note ref." hint="Optional" htmlFor="delivery-note">
